@@ -70,13 +70,14 @@ export default function ClassesIndex() {
       {rows.length === 0 ? (
         <s-section>
           <s-grid
-            gridTemplateColumns="minmax(0, 1fr) minmax(280px, 520px)"
+            gridTemplateColumns="repeat(12, 1fr)"
             gap="large-300"
             alignItems="center"
+            justifyItems="stretch"
             inlineSize="100%"
           >
-            <s-grid-item gridColumn="auto">
-              <s-box maxInlineSize="640px">
+            <s-grid-item gridColumn="span 6">
+              <s-box inlineSize="100%" maxInlineSize="640px">
                 <s-stack direction="block" gap="base">
                   <s-heading>Set up your first class</s-heading>
                   <s-paragraph>
@@ -91,16 +92,17 @@ export default function ClassesIndex() {
               </s-box>
             </s-grid-item>
 
-            <s-grid-item gridColumn="auto">
+            <s-grid-item gridColumn="span 6">
               <s-box
                 accessibilityVisibility="hidden"
                 inlineSize="100%"
+                maxInlineSize="520px"
               >
                 <s-image
-                  src="/te-classes-empty-state.png"
+                  src="/te-classes-empty-state.jpg"
                   alt=""
                   accessibilityRole="presentation"
-                  aspectRatio="1586/992"
+                  aspectRatio="1427/1070"
                   inlineSize="fill"
                   objectFit="contain"
                 />
