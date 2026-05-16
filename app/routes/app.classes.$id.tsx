@@ -219,31 +219,28 @@ function DefaultsCard({
       <Form method="post">
         <input type="hidden" name="intent" value="update-defaults" />
         <s-stack direction="block" gap="base">
-          <s-select label="Timezone" name="timezone" defaultValue={classProduct.timezone}>
+          <s-select label="Timezone" name="timezone" value={classProduct.timezone}>
             {SUPPORTED_TIMEZONES.map((tz) => (
               <s-option key={tz.value} value={tz.value}>{tz.label}</s-option>
             ))}
           </s-select>
-          <s-select label="Display location" name="locationId" defaultValue={classProduct.locationId ?? ""}>
+          <s-select label="Display location" name="locationId" value={classProduct.locationId ?? ""}>
             <s-option value="">None</s-option>
             {locations.map((l) => (
               <s-option key={l.id} value={l.id}>{l.name}</s-option>
             ))}
           </s-select>
-          <s-text-field
-            type="number"
+          <s-number-field
             name="durationMin"
             label="Duration (minutes)"
             defaultValue={String(classProduct.durationMin)}
           />
-          <s-text-field
-            type="number"
+          <s-number-field
             name="defaultCapacity"
             label="Default capacity (seats)"
             defaultValue={String(classProduct.defaultCapacity)}
           />
-          <s-text-field
-            type="number"
+          <s-number-field
             name="defaultPriceCents"
             label="Default price (cents)"
             details="Leave blank to inherit product price."
@@ -292,7 +289,7 @@ function SessionsCard({
     <s-section heading={`Sessions · ${classProduct.sessions.length}`}>
       <s-stack direction="block" gap="base">
         <h3 style={{ margin: 0 }}>Upcoming</h3>
-        {upcoming.length === 0 && <s-text tone="subdued">No upcoming sessions.</s-text>}
+        {upcoming.length === 0 && <s-text tone="neutral">No upcoming sessions.</s-text>}
         {upcoming.map((s) => (
           <SessionRow key={s.id} session={s} timezone={classProduct.timezone} />
         ))}
@@ -321,8 +318,7 @@ function SessionsCard({
 
         {draftRows.map((row, idx) => (
           <s-stack key={idx} direction="inline" gap="base">
-            <s-text-field
-              type="date"
+            <s-date-field
               label={idx === 0 ? "Date" : undefined}
               value={row.date}
               onChange={(e) =>
@@ -332,8 +328,8 @@ function SessionsCard({
               }
             />
             <s-text-field
-              type="time"
               label={idx === 0 ? "Start time" : undefined}
+              placeholder="15:00"
               value={row.time}
               onChange={(e) =>
                 setDraftRows((rs) =>
@@ -392,14 +388,14 @@ function SessionRow({
   const iso = typeof session.startsAt === "string" ? session.startsAt : session.startsAt.toISOString();
   return (
     <s-stack direction="inline" gap="base">
-      <s-text weight={session.cancelled ? undefined : "bold"} tone={session.cancelled ? "subdued" : undefined}>
-        {formatSessionTitle(iso, timezone)}
+      <s-text tone={session.cancelled ? "neutral" : undefined}>
+        {session.cancelled ? formatSessionTitle(iso, timezone) : <strong>{formatSessionTitle(iso, timezone)}</strong>}
       </s-text>
-      <s-text tone="subdued">{session.capacity} seats</s-text>
+      <s-text tone="neutral">{session.capacity} seats</s-text>
       {session.priceCents != null && (
-        <s-text tone="subdued">${(session.priceCents / 100).toFixed(2)}</s-text>
+        <s-text tone="neutral">${(session.priceCents / 100).toFixed(2)}</s-text>
       )}
-      <s-text tone="subdued">{session.sku}</s-text>
+      <s-text tone="neutral">{session.sku}</s-text>
       <Form method="post">
         <input type="hidden" name="intent" value="remove-session" />
         <input type="hidden" name="sessionId" value={session.id} />
@@ -432,4 +428,3 @@ function productNumericId(gid: string): string {
   // gid://shopify/Product/12345 -> 12345
   return gid.split("/").pop() ?? "";
 }
-

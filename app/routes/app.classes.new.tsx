@@ -274,7 +274,7 @@ export default function NewClassWizard() {
             <s-stack direction="block" gap="base">
               <s-stack direction="inline" gap="base">
                 <s-badge tone="success">Selected</s-badge>
-                <s-text weight="bold">{picked.title}</s-text>
+                <s-text><strong>{picked.title}</strong></s-text>
               </s-stack>
               <s-stack direction="inline" gap="base">
                 <s-button onClick={pickProduct}>Change product</s-button>
@@ -337,22 +337,20 @@ export default function NewClassWizard() {
               ))}
             </s-select>
 
-            <s-text-field
-              type="number"
+            <s-number-field
               label="Duration (minutes)"
               value={String(durationMin)}
               onChange={(e) => setDurationMin(Number((e.target as HTMLInputElement).value) || 0)}
             />
-            <s-text-field
-              type="number"
+            <s-number-field
               label="Default capacity (seats)"
               value={String(defaultCapacity)}
               onChange={(e) => setDefaultCapacity(Number((e.target as HTMLInputElement).value) || 0)}
             />
-            <s-text-field
-              type="number"
+            <s-number-field
               label="Default price"
               details="Optional. Leave blank to keep the product's existing price."
+              step={0.01}
               value={defaultPriceCents === "" ? "" : (defaultPriceCents / 100).toString()}
               onChange={(e) => {
                 const v = (e.target as HTMLInputElement).value;
@@ -380,20 +378,18 @@ export default function NewClassWizard() {
           <s-stack direction="block" gap="base">
             {sessions.map((row, idx) => (
               <s-stack key={idx} direction="inline" gap="base">
-                <s-text-field
-                  type="date"
+                <s-date-field
                   label={idx === 0 ? "Date" : undefined}
                   value={row.date}
                   onChange={(e) => updateRow(setSessions, idx, { date: (e.target as HTMLInputElement).value })}
                 />
                 <s-text-field
-                  type="time"
                   label={idx === 0 ? "Start time" : undefined}
+                  placeholder="15:00"
                   value={row.time}
                   onChange={(e) => updateRow(setSessions, idx, { time: (e.target as HTMLInputElement).value })}
                 />
-                <s-text-field
-                  type="number"
+                <s-number-field
                   label={idx === 0 ? "Capacity" : undefined}
                   placeholder={String(defaultCapacity)}
                   value={row.capacity != null ? String(row.capacity) : ""}
@@ -405,10 +401,10 @@ export default function NewClassWizard() {
                     })
                   }
                 />
-                <s-text-field
-                  type="number"
+                <s-number-field
                   label={idx === 0 ? "Price override" : undefined}
                   placeholder={defaultPriceCents === "" ? "Product price" : (defaultPriceCents / 100).toFixed(2)}
+                  step={0.01}
                   value={row.priceCents != null ? (row.priceCents / 100).toString() : ""}
                   onChange={(e) => {
                     const v = (e.target as HTMLInputElement).value;
@@ -523,7 +519,9 @@ function updateRow(
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <s-stack direction="inline" gap="base">
-      <s-text tone="subdued" style={{ minWidth: "12rem" }}>{label}</s-text>
+      <span style={{ minWidth: "12rem" }}>
+        <s-text tone="neutral">{label}</s-text>
+      </span>
       <s-text>{value}</s-text>
     </s-stack>
   );
@@ -540,11 +538,10 @@ function Stepper({ step }: { step: number }) {
         return (
           <s-stack key={label} direction="inline" gap="base">
             <s-badge tone={done ? "success" : active ? "info" : undefined}>{n}</s-badge>
-            <s-text tone={active ? undefined : "subdued"}>{label}</s-text>
+            <s-text tone={active ? undefined : "neutral"}>{label}</s-text>
           </s-stack>
         );
       })}
     </s-stack>
   );
 }
-

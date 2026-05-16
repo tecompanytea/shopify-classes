@@ -46,19 +46,17 @@ export default function Settings() {
         {actionData?.ok && <s-banner tone="success">Saved.</s-banner>}
         <Form method="post">
           <s-stack direction="block" gap="base">
-            <s-select name="defaultTimezone" label="Default timezone" defaultValue={settings.defaultTimezone}>
+            <s-select name="defaultTimezone" label="Default timezone" value={settings.defaultTimezone}>
               {SUPPORTED_TIMEZONES.map((tz) => (
                 <s-option key={tz.value} value={tz.value}>{tz.label}</s-option>
               ))}
             </s-select>
-            <s-text-field
-              type="number"
+            <s-number-field
               name="defaultDurationMin"
               label="Default duration (minutes)"
               defaultValue={String(settings.defaultDurationMin)}
             />
-            <s-text-field
-              type="number"
+            <s-number-field
               name="defaultCapacity"
               label="Default capacity (seats)"
               defaultValue={String(settings.defaultCapacity)}
@@ -66,7 +64,7 @@ export default function Settings() {
             <s-select
               name="defaultLocationId"
               label="Default display location"
-              defaultValue={settings.defaultLocationId ?? ""}
+              value={settings.defaultLocationId ?? ""}
             >
               <s-option value="">None</s-option>
               {locations.map((l) => (

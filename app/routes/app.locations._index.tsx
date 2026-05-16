@@ -39,10 +39,10 @@ export default function LocationsIndex() {
             {locations.map((l) => (
               <s-stack key={l.id} direction="inline" gap="base">
                 <Link to={`/app/locations/${l.id}`}>
-                  <s-text weight="bold">{l.name}</s-text>
+                  <s-text><strong>{l.name}</strong></s-text>
                 </Link>
-                <s-text tone="subdued">{[l.city, l.region].filter(Boolean).join(", ") || "—"}</s-text>
-                <s-text tone="subdued">{l.timezone}</s-text>
+                <s-text tone="neutral">{[l.city, l.region].filter(Boolean).join(", ") || "—"}</s-text>
+                <s-text tone="neutral">{l.timezone}</s-text>
               </s-stack>
             ))}
           </s-stack>

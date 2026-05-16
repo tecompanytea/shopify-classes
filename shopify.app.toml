@@ -1,9 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = ""
-name = "Classes"
+client_id = "9cd5631f2937a274e720316f85fd032c"
 application_url = "https://shopify-classes.vercel.app"
 embedded = true
+name = "Classes"
 
 [webhooks]
 api_version = "2026-04"
@@ -26,7 +26,10 @@ api_version = "2026-04"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_products,read_inventory,write_inventory,read_locations,read_orders"
+scopes = "read_inventory,read_locations,read_orders,read_products,write_inventory,write_products"
 
 [auth]
 redirect_urls = [ "https://shopify-classes.vercel.app/auth/callback" ]
+
+[build]
+automatically_update_urls_on_dev = true

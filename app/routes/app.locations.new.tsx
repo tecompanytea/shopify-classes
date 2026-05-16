@@ -48,7 +48,7 @@ export default function NewLocation() {
               <s-text-field name="postalCode" label="Postal code" />
             </s-stack>
             <s-text-field name="country" label="Country" />
-            <s-select name="timezone" label="Timezone" defaultValue="America/Los_Angeles">
+            <s-select name="timezone" label="Timezone" value="America/Los_Angeles">
               {SUPPORTED_TIMEZONES.map((tz) => (
                 <s-option key={tz.value} value={tz.value}>{tz.label}</s-option>
               ))}

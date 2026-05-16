@@ -68,7 +68,7 @@ export default function EditLocation() {
               <s-text-field name="postalCode" label="Postal code" defaultValue={location.postalCode ?? ""} />
             </s-stack>
             <s-text-field name="country" label="Country" defaultValue={location.country ?? ""} />
-            <s-select name="timezone" label="Timezone" defaultValue={location.timezone}>
+            <s-select name="timezone" label="Timezone" value={location.timezone}>
               {SUPPORTED_TIMEZONES.map((tz) => (
                 <s-option key={tz.value} value={tz.value}>{tz.label}</s-option>
               ))}
@@ -80,7 +80,7 @@ export default function EditLocation() {
 
       <s-section heading={`Classes using this location · ${location.classProducts.length}`}>
         {location.classProducts.length === 0 ? (
-          <s-text tone="subdued">None.</s-text>
+          <s-text tone="neutral">None.</s-text>
         ) : (
           <s-stack direction="block" gap="base">
             {location.classProducts.map((c) => (
