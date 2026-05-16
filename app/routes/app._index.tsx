@@ -73,30 +73,40 @@ export default function ClassesIndex() {
 
       {rows.length === 0 ? (
         <s-section>
-          <s-stack direction="inline" gap="large-300" alignItems="center" justifyContent="space-between">
-            <s-stack direction="block" gap="base">
-              <s-heading>Set up your first class</s-heading>
-              <s-paragraph>
-                Pick an existing Shopify product, add dates, capacity,
-                location, and pricing. Customers can then view real-time class
-                availability and check out through Shopify.
-              </s-paragraph>
-              <s-button href="/app/classes/new" variant="primary">
-                Create class
-              </s-button>
-            </s-stack>
+          <s-query-container>
+            <s-stack
+              direction="@container (inline-size > 760px) inline, block"
+              gap="@container (inline-size > 760px) large-300, large-100"
+              alignItems="center"
+              justifyContent="space-between"
+              inlineSize="100%"
+            >
+              <s-box maxInlineSize="640px">
+                <s-stack direction="block" gap="base">
+                  <s-heading>Set up your first class</s-heading>
+                  <s-paragraph>
+                    Pick an existing Shopify product, add dates, capacity,
+                    location, and pricing. Customers can then view real-time
+                    class availability and check out through Shopify.
+                  </s-paragraph>
+                  <s-button href="/app/classes/new" variant="primary">
+                    Create class
+                  </s-button>
+                </s-stack>
+              </s-box>
 
-            <s-box maxInlineSize="520px" accessibilityVisibility="hidden">
-              <s-image
-                src="/te-classes-empty-state.png"
-                alt=""
-                accessibilityRole="presentation"
-                aspectRatio="1586/992"
-                inlineSize="fill"
-                objectFit="contain"
-              />
-            </s-box>
-          </s-stack>
+              <s-box maxInlineSize="520px" accessibilityVisibility="hidden">
+                <s-image
+                  src="/te-classes-empty-state.png"
+                  alt=""
+                  accessibilityRole="presentation"
+                  aspectRatio="1586/992"
+                  inlineSize="fill"
+                  objectFit="contain"
+                />
+              </s-box>
+            </s-stack>
+          </s-query-container>
         </s-section>
       ) : (
         <s-section heading={`${rows.length} class${rows.length === 1 ? "" : "es"}`}>
