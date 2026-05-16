@@ -5,7 +5,6 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
-import styles from "../styles/app-index.module.css";
 
 type ClassRow = {
   id: string;
@@ -73,27 +72,32 @@ export default function ClassesIndex() {
       </s-button>
 
       {rows.length === 0 ? (
-        <div className={styles.emptyState}>
-          <div className={styles.emptyCopy}>
-            <h2>Set up your first class</h2>
-            <p>
-              Pick an existing Shopify product, add dates, capacity, location,
-              and pricing. Customers can then view real-time class availability
-              and check out through Shopify.
-            </p>
-            <s-button href="/app/classes/new" variant="primary">
-              Create class
-            </s-button>
-          </div>
+        <s-section>
+          <s-stack direction="inline" gap="large-300" alignItems="center" justifyContent="space-between">
+            <s-stack direction="block" gap="base">
+              <s-heading>Set up your first class</s-heading>
+              <s-paragraph>
+                Pick an existing Shopify product, add dates, capacity,
+                location, and pricing. Customers can then view real-time class
+                availability and check out through Shopify.
+              </s-paragraph>
+              <s-button href="/app/classes/new" variant="primary">
+                Create class
+              </s-button>
+            </s-stack>
 
-          <div className={styles.emptyArt} aria-hidden="true">
-            <img
-              src="/te-classes-empty-state.png"
-              alt=""
-              loading="eager"
-            />
-          </div>
-        </div>
+            <s-box maxInlineSize="520px" accessibilityVisibility="hidden">
+              <s-image
+                src="/te-classes-empty-state.png"
+                alt=""
+                accessibilityRole="presentation"
+                aspectRatio="1586/992"
+                inlineSize="fill"
+                objectFit="contain"
+              />
+            </s-box>
+          </s-stack>
+        </s-section>
       ) : (
         <s-section heading={`${rows.length} class${rows.length === 1 ? "" : "es"}`}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
