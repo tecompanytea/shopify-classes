@@ -67,10 +67,6 @@ export default function ClassesIndex() {
 
   return (
     <s-page heading="Classes">
-      <s-button slot="primary-action" href="/app/classes/new" variant="primary">
-        New class
-      </s-button>
-
       {rows.length === 0 ? (
         <s-section>
           <s-grid
