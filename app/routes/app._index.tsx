@@ -5,6 +5,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
+import styles from "../styles/app-index.module.css";
 
 type ClassRow = {
   id: string;
@@ -72,19 +73,27 @@ export default function ClassesIndex() {
       </s-button>
 
       {rows.length === 0 ? (
-        <s-section>
-          <s-stack direction="block" gap="base">
-            <s-heading>No classes yet</s-heading>
-            <s-paragraph>
-              Pick an existing Shopify product and turn it into a class. Each
-              session you schedule becomes a product variant, so checkout,
-              inventory, and orders stay in Shopify.
-            </s-paragraph>
+        <div className={styles.emptyState}>
+          <div className={styles.emptyCopy}>
+            <h2>Set up your first class</h2>
+            <p>
+              Pick an existing Shopify product, add dates, capacity, location,
+              and pricing. Customers can then view real-time class availability
+              and check out through Shopify.
+            </p>
             <s-button href="/app/classes/new" variant="primary">
-              Create your first class
+              Create class
             </s-button>
-          </s-stack>
-        </s-section>
+          </div>
+
+          <div className={styles.emptyArt} aria-hidden="true">
+            <img
+              src="/te-classes-empty-state.png"
+              alt=""
+              loading="eager"
+            />
+          </div>
+        </div>
       ) : (
         <s-section heading={`${rows.length} class${rows.length === 1 ? "" : "es"}`}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
