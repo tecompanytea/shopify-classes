@@ -73,14 +73,13 @@ export default function ClassesIndex() {
 
       {rows.length === 0 ? (
         <s-section>
-          <s-query-container>
-            <s-stack
-              direction="@container (inline-size > 760px) inline, block"
-              gap="@container (inline-size > 760px) large-300, large-100"
-              alignItems="center"
-              justifyContent="space-between"
-              inlineSize="100%"
-            >
+          <s-grid
+            gridTemplateColumns="minmax(0, 1fr) minmax(280px, 520px)"
+            gap="large-300"
+            alignItems="center"
+            inlineSize="100%"
+          >
+            <s-grid-item gridColumn="auto">
               <s-box maxInlineSize="640px">
                 <s-stack direction="block" gap="base">
                   <s-heading>Set up your first class</s-heading>
@@ -94,8 +93,13 @@ export default function ClassesIndex() {
                   </s-button>
                 </s-stack>
               </s-box>
+            </s-grid-item>
 
-              <s-box maxInlineSize="520px" accessibilityVisibility="hidden">
+            <s-grid-item gridColumn="auto">
+              <s-box
+                accessibilityVisibility="hidden"
+                inlineSize="100%"
+              >
                 <s-image
                   src="/te-classes-empty-state.png"
                   alt=""
@@ -105,8 +109,8 @@ export default function ClassesIndex() {
                   objectFit="contain"
                 />
               </s-box>
-            </s-stack>
-          </s-query-container>
+            </s-grid-item>
+          </s-grid>
         </s-section>
       ) : (
         <s-section heading={`${rows.length} class${rows.length === 1 ? "" : "es"}`}>
