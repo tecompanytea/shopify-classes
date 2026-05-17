@@ -165,7 +165,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
       where: { id },
       data: { status: "archived" },
     });
-    return redirect("/app");
+    return redirect("/app/classes");
   }
 
   return { error: "Unknown action." };
@@ -184,7 +184,7 @@ export default function ClassDetail() {
   const busy = navigation.state !== "idle";
 
   return (
-    <s-page heading={classProduct.title} back-href="/app">
+    <s-page heading={classProduct.title} back-href="/app/classes">
       <s-button slot="primary-action" href={`shopify://admin/products/${productNumericId(classProduct.productGid)}`} target="_top">
         Open in Shopify
       </s-button>

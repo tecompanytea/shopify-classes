@@ -1,0 +1,272 @@
+.dashboard {
+  display: grid;
+  gap: 20px;
+}
+
+.rangeForm {
+  position: relative;
+  justify-self: start;
+}
+
+.rangeDetails {
+  position: relative;
+}
+
+.rangeDetails[open] .rangePill {
+  border-color: #9ca3af;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+}
+
+.rangePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  color: #303030;
+  background: #fff;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  list-style: none;
+}
+
+.rangePill::-webkit-details-marker {
+  display: none;
+}
+
+.rangePill svg,
+.statIcon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rangePanel {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 8px);
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(152px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  width: max-content;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.12);
+}
+
+.rangePanel label {
+  display: grid;
+  gap: 6px;
+  color: #616161;
+  font-size: 12px;
+}
+
+.rangePanel input {
+  min-height: 36px;
+  padding: 0 10px;
+  color: #303030;
+  border: 1px solid #c9cccf;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.rangePanel button {
+  min-height: 36px;
+  padding: 0 14px;
+  color: #fff;
+  background: #303030;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.statCard,
+.chartCard {
+  background: #fff;
+  border: 1px solid #d9d9dd;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+}
+
+.statCard {
+  display: grid;
+  gap: 28px;
+  min-height: 122px;
+  padding: 24px 24px 22px;
+}
+
+.statTitleRow {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.statTitleRow h2,
+.chartCard h2 {
+  margin: 0;
+  color: #303030;
+  font-size: 18px;
+  font-weight: 450;
+  line-height: 1.25;
+}
+
+.statIcon {
+  flex: 0 0 auto;
+  color: #444;
+}
+
+.statCard p {
+  margin: 0;
+  color: #303030;
+  font-size: 32px;
+  font-weight: 450;
+  line-height: 1;
+}
+
+.chartCard {
+  padding: 44px 32px 30px;
+}
+
+.chartCard h2 {
+  margin: 0 0 28px 0;
+}
+
+.chartWrap {
+  min-width: 0;
+}
+
+.chartWrap svg {
+  display: block;
+  width: 100%;
+  min-height: 360px;
+}
+
+.gridLine {
+  stroke: #d5d5d8;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.axisLine {
+  stroke: #707070;
+  stroke-width: 1.2;
+}
+
+.axisText {
+  fill: #666;
+  font-size: 15px;
+}
+
+.totalLine,
+.cancelledLine {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.totalLine {
+  stroke: #37b7c7;
+}
+
+.cancelledLine {
+  stroke: #8f2895;
+}
+
+.totalDot,
+.cancelledDot {
+  fill: #fff;
+  stroke-width: 3;
+}
+
+.totalDot {
+  stroke: #37b7c7;
+}
+
+.cancelledDot {
+  stroke: #8f2895;
+}
+
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin-top: 8px;
+  color: #555;
+  font-size: 16px;
+}
+
+.totalLegend,
+.cancelledLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.totalLegend::before,
+.cancelledLegend::before {
+  content: "";
+  width: 14px;
+  height: 8px;
+  border-top: 3px solid currentColor;
+  border-radius: 999px;
+}
+
+.totalLegend {
+  color: #37aebb;
+}
+
+.cancelledLegend {
+  color: #8f2895;
+}
+
+@media (max-width: 1100px) {
+  .statGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .statGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rangePanel {
+    position: static;
+    grid-template-columns: minmax(0, 1fr);
+    width: auto;
+    margin-top: 8px;
+  }
+
+  .chartCard {
+    padding: 24px 16px 22px;
+  }
+
+  .chartWrap svg {
+    min-width: 760px;
+  }
+
+  .chartWrap {
+    overflow-x: auto;
+  }
+}

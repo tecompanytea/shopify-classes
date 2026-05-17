@@ -29,7 +29,7 @@ export default function LocationsIndex() {
         <s-section>
           <s-paragraph>
             Locations are the human-readable venue strings that show up on the
-            class product. They are separate from Shopify's inventory locations.
+            class product. They are separate from Shopify&apos;s inventory locations.
           </s-paragraph>
           <s-button href="/app/locations/new" variant="primary">Add a location</s-button>
         </s-section>

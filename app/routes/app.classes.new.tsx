@@ -259,7 +259,7 @@ export default function NewClassWizard() {
   };
 
   return (
-    <s-page heading="New class" back-href="/app">
+    <s-page heading="New class" back-href="/app/classes">
       <s-section heading={`Step ${step} of 4`}>
         <Stepper step={step} />
       </s-section>
