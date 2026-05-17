@@ -37,7 +37,7 @@ model Session {
 model ShopSettings {
   id              String   @id @default(cuid())
   shop            String   @unique
-  defaultTimezone String   @default("America/Los_Angeles")
+  defaultTimezone String   @default("America/New_York")
   defaultDurationMin Int   @default(60)
   defaultCapacity Int      @default(12)
   defaultLocationId String?
@@ -58,7 +58,7 @@ model Location {
   region      String?
   postalCode  String?
   country     String?
-  timezone    String   @default("America/Los_Angeles")
+  timezone    String   @default("America/New_York")
   bookingNotificationEmails String?
   archived    Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -80,10 +80,12 @@ model ClassProduct {
   status        String   @default("draft") // draft | active | archived (mirrors Shopify status loosely)
   locationId    String?
   location      Location? @relation(fields: [locationId], references: [id])
-  timezone      String   @default("America/Los_Angeles")
+  timezone      String   @default("America/New_York")
   durationMin   Int      @default(60)
   defaultCapacity Int    @default(12)
   defaultPriceCents Int?
+  notes         String?
+  tags          String?
   publishedAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

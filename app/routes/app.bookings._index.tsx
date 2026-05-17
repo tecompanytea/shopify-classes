@@ -5,13 +5,13 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { listBookingsForVariants, type BookingRow } from "../.server/shopify/orders";
+import { CLASS_TIMEZONE } from "../lib/class-config";
 import { formatSessionTitle } from "../lib/sku";
 
 type LoaderResult = {
   rows: (BookingRow & {
     classTitle: string | null;
     sessionStartsAt: string | null;
-    timezone: string | null;
   })[];
 };
 
@@ -37,7 +37,6 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       ...b,
       classTitle: s?.classProduct.title ?? null,
       sessionStartsAt: s ? s.startsAt.toISOString() : null,
-      timezone: s?.timezone ?? null,
     };
   });
 
@@ -60,53 +59,41 @@ export default function Bookings() {
         </s-section>
       ) : (
         <s-section heading={`${rows.length} line item${rows.length === 1 ? "" : "s"}`}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e1e3e5" }}>
-                <th style={th}>Order</th>
-                <th style={th}>Customer</th>
-                <th style={th}>Event</th>
-                <th style={th}>Session</th>
-                <th style={th}>Qty</th>
-                <th style={th}>Payment</th>
-              </tr>
-            </thead>
-            <tbody>
+          <s-table>
+            <s-table-header-row>
+              <s-table-header listSlot="primary">Order</s-table-header>
+              <s-table-header>Customer</s-table-header>
+              <s-table-header>Event</s-table-header>
+              <s-table-header>Session</s-table-header>
+              <s-table-header format="numeric">Qty</s-table-header>
+              <s-table-header listSlot="secondary">Payment</s-table-header>
+            </s-table-header-row>
+            <s-table-body>
               {rows.map((r) => (
-                <tr key={`${r.orderId}-${r.variantId}`} style={{ borderBottom: "1px solid #f1f1f1" }}>
-                  <td style={td}>
-                    <a
+                <s-table-row key={`${r.orderId}-${r.variantId}`}>
+                  <s-table-cell>
+                    <s-link
                       href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
                       target="_top"
                     >
                       {r.orderName}
-                    </a>
-                  </td>
-                  <td style={td}>{r.customerName ?? r.email ?? "—"}</td>
-                  <td style={td}>{r.classTitle ?? r.title}</td>
-                  <td style={td}>
-                    {r.sessionStartsAt && r.timezone
-                      ? formatSessionTitle(r.sessionStartsAt, r.timezone)
+                    </s-link>
+                  </s-table-cell>
+                  <s-table-cell>{r.customerName ?? r.email ?? "—"}</s-table-cell>
+                  <s-table-cell>{r.classTitle ?? r.title}</s-table-cell>
+                  <s-table-cell>
+                    {r.sessionStartsAt
+                      ? formatSessionTitle(r.sessionStartsAt, CLASS_TIMEZONE)
                       : r.variantTitle ?? "—"}
-                  </td>
-                  <td style={td}>{r.quantity}</td>
-                  <td style={td}>{r.financialStatus ?? "—"}</td>
-                </tr>
+                  </s-table-cell>
+                  <s-table-cell>{r.quantity}</s-table-cell>
+                  <s-table-cell>{r.financialStatus ?? "—"}</s-table-cell>
+                </s-table-row>
               ))}
-            </tbody>
-          </table>
+            </s-table-body>
+          </s-table>
         </s-section>
       )}
     </s-page>
   );
 }
-
-const th: React.CSSProperties = {
-  padding: "0.6rem 0.5rem",
-  fontSize: "0.78rem",
-  fontWeight: 500,
-  color: "#6d7175",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-const td: React.CSSProperties = { padding: "0.65rem 0.5rem", fontSize: "0.9rem" };

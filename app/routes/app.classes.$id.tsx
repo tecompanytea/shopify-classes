@@ -13,7 +13,7 @@ import { DateTime } from "luxon";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { SUPPORTED_TIMEZONES } from "../lib/timezones";
+import { CLASS_TIMEZONE } from "../lib/class-config";
 import { formatSessionTitle, generateSessionSku } from "../lib/sku";
 import { ensureSessionDateOption } from "../.server/shopify/products";
 import {
@@ -65,17 +65,18 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
 
   if (intent === "update-defaults") {
     const locationId = String(form.get("locationId") ?? "") || null;
-    const timezone = String(form.get("timezone") ?? classProduct.timezone);
     const durationMin = Number(form.get("durationMin") ?? classProduct.durationMin);
     const defaultCapacity = Number(form.get("defaultCapacity") ?? classProduct.defaultCapacity);
-    const defaultPriceRaw = form.get("defaultPriceCents");
-    const defaultPriceCents = defaultPriceRaw === null || defaultPriceRaw === ""
-      ? null
-      : Number(defaultPriceRaw);
 
     await db.classProduct.update({
       where: { id },
-      data: { locationId, timezone, durationMin, defaultCapacity, defaultPriceCents },
+      data: {
+        locationId,
+        timezone: CLASS_TIMEZONE,
+        durationMin,
+        defaultCapacity,
+        defaultPriceCents: null,
+      },
     });
     return { ok: true, message: "Defaults updated." };
   }
@@ -83,7 +84,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
   if (intent === "add-sessions") {
     const shopifyLocationGid = String(form.get("shopifyLocationGid") ?? "");
     if (!shopifyLocationGid) return { error: "Pick an inventory location." };
-    let parsed: Array<{ startsAt: string; capacity?: number; priceCents?: number | null }>;
+    let parsed: Array<{ startsAt: string; capacity?: number }>;
     try {
       parsed = JSON.parse(String(form.get("sessions") ?? "[]"));
     } catch {
@@ -92,16 +93,15 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
     if (!Array.isArray(parsed) || parsed.length === 0) return { error: "Add at least one session." };
 
     const drafts: SessionDraft[] = parsed.map((s) => {
-      const startsAt = DateTime.fromISO(s.startsAt, { zone: classProduct.timezone });
+      const startsAt = DateTime.fromISO(s.startsAt, { zone: CLASS_TIMEZONE });
       const endsAt = startsAt.plus({ minutes: classProduct.durationMin });
       return {
         startsAt: startsAt.toJSDate(),
         endsAt: endsAt.toJSDate(),
-        timezone: classProduct.timezone,
+        timezone: CLASS_TIMEZONE,
         capacity: s.capacity ?? classProduct.defaultCapacity,
-        priceCents: s.priceCents ?? classProduct.defaultPriceCents,
-        sku: generateSessionSku(classProduct.title, startsAt.toISO()!, classProduct.timezone),
-        displayName: formatSessionTitle(startsAt.toISO()!, classProduct.timezone),
+        sku: generateSessionSku(classProduct.title, startsAt.toISO()!, CLASS_TIMEZONE),
+        displayName: formatSessionTitle(startsAt.toISO()!, CLASS_TIMEZONE),
       };
     });
 
@@ -136,9 +136,9 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
         sku: c.sku,
         startsAt: drafts[idx].startsAt,
         endsAt: drafts[idx].endsAt,
-        timezone: classProduct.timezone,
+        timezone: CLASS_TIMEZONE,
         capacity: drafts[idx].capacity,
-        priceCents: drafts[idx].priceCents ?? null,
+        priceCents: null,
       })),
       skipDuplicates: true,
     });
@@ -219,11 +219,6 @@ function DefaultsCard({
       <Form method="post">
         <input type="hidden" name="intent" value="update-defaults" />
         <s-stack direction="block" gap="base">
-          <s-select label="Timezone" name="timezone" value={classProduct.timezone}>
-            {SUPPORTED_TIMEZONES.map((tz) => (
-              <s-option key={tz.value} value={tz.value}>{tz.label}</s-option>
-            ))}
-          </s-select>
           <s-select label="Display location" name="locationId" value={classProduct.locationId ?? ""}>
             <s-option value="">None</s-option>
             {locations.map((l) => (
@@ -240,12 +235,7 @@ function DefaultsCard({
             label="Default capacity (seats)"
             defaultValue={String(classProduct.defaultCapacity)}
           />
-          <s-number-field
-            name="defaultPriceCents"
-            label="Default price (cents)"
-            details="Leave blank to inherit product price."
-            defaultValue={classProduct.defaultPriceCents != null ? String(classProduct.defaultPriceCents) : ""}
-          />
+          <s-paragraph>Class price comes from the Shopify product.</s-paragraph>
           <s-button type="submit" variant="primary" loading={busy ? true : undefined}>
             Save defaults
           </s-button>
@@ -266,7 +256,7 @@ function SessionsCard({
 }) {
   const [draftRows, setDraftRows] = useState<{ date: string; time: string }[]>([
     {
-      date: DateTime.now().setZone(classProduct.timezone).toFormat("yyyy-LL-dd"),
+      date: DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd"),
       time: "15:00",
     },
   ]);
@@ -277,9 +267,9 @@ function SessionsCard({
       draftRows
         .filter((r) => r.date && r.time)
         .map((r) => ({
-          startsAt: DateTime.fromISO(`${r.date}T${r.time}`, { zone: classProduct.timezone }).toISO(),
+          startsAt: DateTime.fromISO(`${r.date}T${r.time}`, { zone: CLASS_TIMEZONE }).toISO(),
         })),
-    [draftRows, classProduct.timezone],
+    [draftRows],
   );
 
   const upcoming = classProduct.sessions.filter((s) => !s.cancelled && new Date(s.startsAt) > new Date());
@@ -288,24 +278,22 @@ function SessionsCard({
   return (
     <s-section heading={`Sessions · ${classProduct.sessions.length}`}>
       <s-stack direction="block" gap="base">
-        <h3 style={{ margin: 0 }}>Upcoming</h3>
+        <s-heading>Upcoming</s-heading>
         {upcoming.length === 0 && <s-text tone="neutral">No upcoming sessions.</s-text>}
         {upcoming.map((s) => (
-          <SessionRow key={s.id} session={s} timezone={classProduct.timezone} />
+          <SessionRow key={s.id} session={s} />
         ))}
 
-        <details>
-          <summary>Past / cancelled ({past.length})</summary>
-          <s-stack direction="block" gap="base">
-            {past.map((s) => (
-              <SessionRow key={s.id} session={s} timezone={classProduct.timezone} />
-            ))}
-          </s-stack>
-        </details>
+        <s-heading>{`Past / cancelled · ${past.length}`}</s-heading>
+        <s-stack direction="block" gap="base">
+          {past.map((s) => (
+            <SessionRow key={s.id} session={s} />
+          ))}
+        </s-stack>
 
         <s-divider />
 
-        <h3 style={{ margin: 0 }}>Add sessions</h3>
+        <s-heading>Add sessions</s-heading>
         <s-select
           label="Shopify inventory location"
           value={shopifyLocationGid}
@@ -372,29 +360,26 @@ function SessionsCard({
 
 function SessionRow({
   session,
-  timezone,
 }: {
   session: {
     id: string;
     sku: string;
     startsAt: string | Date;
     capacity: number;
-    priceCents: number | null;
     cancelled: boolean;
     variantGid: string;
   };
-  timezone: string;
 }) {
   const iso = typeof session.startsAt === "string" ? session.startsAt : session.startsAt.toISOString();
+  const title = formatSessionTitle(iso, CLASS_TIMEZONE);
   return (
     <s-stack direction="inline" gap="base">
-      <s-text tone={session.cancelled ? "neutral" : undefined}>
-        {session.cancelled ? formatSessionTitle(iso, timezone) : <strong>{formatSessionTitle(iso, timezone)}</strong>}
-      </s-text>
-      <s-text tone="neutral">{session.capacity} seats</s-text>
-      {session.priceCents != null && (
-        <s-text tone="neutral">${(session.priceCents / 100).toFixed(2)}</s-text>
+      {session.cancelled ? (
+        <s-text tone="neutral">{title}</s-text>
+      ) : (
+        <s-text type="strong">{title}</s-text>
       )}
+      <s-text tone="neutral">{session.capacity} seats</s-text>
       <s-text tone="neutral">{session.sku}</s-text>
       <Form method="post">
         <input type="hidden" name="intent" value="remove-session" />

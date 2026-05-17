@@ -1,17 +1,17 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Link, useLoaderData, useRouteError } from "react-router";
+import { useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
+import { CLASS_TIMEZONE } from "../lib/class-config";
 
 type ClassRow = {
   id: string;
   title: string;
   status: string;
   locationName: string | null;
-  timezone: string;
   durationMin: number;
   defaultCapacity: number;
   sessionCount: number;
@@ -44,7 +44,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       title: c.title,
       status: c.status,
       locationName: c.location?.name ?? null,
-      timezone: c.timezone,
       durationMin: c.durationMin,
       defaultCapacity: c.defaultCapacity,
       sessionCount: c.sessions.length,
@@ -78,7 +77,7 @@ export default function ClassesIndex() {
           <s-grid
             gap="base"
             justifyItems="center"
-            paddingBlock="large-400"
+            paddingBlock="base"
           >
             <s-box maxInlineSize="280px" maxBlockSize="210px">
               <s-image
@@ -94,7 +93,7 @@ export default function ClassesIndex() {
                 <s-heading>Set up your first event</s-heading>
                 <s-paragraph>
                   Pick an existing Shopify product, add dates, capacity,
-                  location, and pricing. Customers can then view real-time
+                  and location. Customers can then view real-time
                   event availability and check out through Shopify.
                 </s-paragraph>
               </s-stack>
@@ -121,9 +120,9 @@ export default function ClassesIndex() {
                 return (
                   <s-table-row key={row.id} clickDelegate={classLinkId}>
                     <s-table-cell>
-                      <Link id={classLinkId} to={`/app/classes/${row.id}`}>
+                      <s-link id={classLinkId} href={`/app/classes/${row.id}`}>
                         {row.title}
-                      </Link>
+                      </s-link>
                     </s-table-cell>
                     <s-table-cell>
                       <s-badge tone={row.status === "active" ? "success" : undefined}>
@@ -140,7 +139,7 @@ export default function ClassesIndex() {
                             day: "numeric",
                             hour: "numeric",
                             minute: "2-digit",
-                            timeZone: row.timezone,
+                            timeZone: CLASS_TIMEZONE,
                           })
                         : "-"}
                     </s-table-cell>

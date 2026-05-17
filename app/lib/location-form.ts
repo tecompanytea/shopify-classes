@@ -1,3 +1,5 @@
+import { CLASS_TIMEZONE } from "./class-config";
+
 export type LocationStatus = "enabled" | "disabled";
 
 export type LocationFormValues = {
@@ -34,7 +36,7 @@ export const defaultLocationFormValues: LocationFormValues = {
   city: "",
   region: "",
   postalCode: "",
-  timezone: "",
+  timezone: CLASS_TIMEZONE,
   status: "enabled",
   bookingNotificationEmails: "",
 };
@@ -63,7 +65,7 @@ export function readLocationFormValues(form: FormData): LocationFormValues {
     city: field(form, "city"),
     region: field(form, "region"),
     postalCode: field(form, "postalCode"),
-    timezone: field(form, "timezone"),
+    timezone: CLASS_TIMEZONE,
     status: status === "disabled" ? "disabled" : "enabled",
     bookingNotificationEmails: field(form, "bookingNotificationEmails"),
   };
@@ -80,7 +82,7 @@ export function locationToFormValues(
     city: location.city ?? "",
     region: location.region ?? "",
     postalCode: location.postalCode ?? "",
-    timezone: location.timezone,
+    timezone: CLASS_TIMEZONE,
     status: location.archived ? "disabled" : "enabled",
     bookingNotificationEmails: location.bookingNotificationEmails ?? "",
   };

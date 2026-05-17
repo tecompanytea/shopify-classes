@@ -5,7 +5,6 @@ export type SessionDraft = {
   endsAt: Date;
   timezone: string;
   capacity: number;
-  priceCents?: number | null;
   sku: string;
   displayName: string; // human-readable variant title, e.g. "Sat May 23, 2026 at 3:00 PM"
 };
@@ -37,7 +36,6 @@ export async function createSessionVariants(
 
   const variants = drafts.map((draft) => ({
     optionValues: [{ optionName: "Session", name: draft.displayName }],
-    price: draft.priceCents != null ? (draft.priceCents / 100).toFixed(2) : undefined,
     inventoryItem: {
       sku: draft.sku,
       tracked: true,
@@ -73,8 +71,8 @@ export async function createSessionVariants(
     );
   }
 
-  // Suppress unused-locals warnings — currencyCode is reserved for a future
-  // multi-currency code path where Shopify requires currency on price.
+  // Suppress unused-locals warnings — currencyCode is reserved for future
+  // currency-aware variant creation if Shopify requires an explicit price.
   void currencyCode;
 
   return (payload?.productVariants ?? []).map((v: {

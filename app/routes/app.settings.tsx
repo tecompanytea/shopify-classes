@@ -4,7 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { SUPPORTED_TIMEZONES } from "../lib/timezones";
+import { CLASS_TIMEZONE } from "../lib/class-config";
 import { getOrCreateShopSettings } from "../lib/settings.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -24,7 +24,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   await db.shopSettings.update({
     where: { id: settings.id },
     data: {
-      defaultTimezone: String(form.get("defaultTimezone") ?? settings.defaultTimezone),
+      defaultTimezone: CLASS_TIMEZONE,
       defaultDurationMin: Number(form.get("defaultDurationMin") ?? settings.defaultDurationMin),
       defaultCapacity: Number(form.get("defaultCapacity") ?? settings.defaultCapacity),
       defaultLocationId: String(form.get("defaultLocationId") ?? "") || null,
@@ -46,11 +46,6 @@ export default function Settings() {
         {actionData?.ok && <s-banner tone="success">Saved.</s-banner>}
         <Form method="post">
           <s-stack direction="block" gap="base">
-            <s-select name="defaultTimezone" label="Default timezone" value={settings.defaultTimezone}>
-              {SUPPORTED_TIMEZONES.map((tz) => (
-                <s-option key={tz.value} value={tz.value}>{tz.label}</s-option>
-              ))}
-            </s-select>
             <s-number-field
               name="defaultDurationMin"
               label="Default duration (minutes)"

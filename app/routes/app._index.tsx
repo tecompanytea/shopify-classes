@@ -6,7 +6,7 @@ import { DateTime } from "luxon";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { listBookingsForVariants, type BookingRow } from "../.server/shopify/orders";
-import { getOrCreateShopSettings } from "../lib/settings.server";
+import { CLASS_TIMEZONE } from "../lib/class-config";
 
 type SessionSummary = {
   variantGid: string;
@@ -52,9 +52,8 @@ const RANGE_OPTIONS: { label: string; preset: Exclude<RangePreset, "custom"> }[]
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<DashboardLoader> => {
   const { session, admin } = await authenticate.admin(request);
-  const settings = await getOrCreateShopSettings(session.shop);
   const url = new URL(request.url);
-  const timezone = settings.defaultTimezone;
+  const timezone = CLASS_TIMEZONE;
 
   const today = DateTime.now().setZone(timezone).startOf("day");
   const requestedPreset = parseRangePreset(url.searchParams.get("range"));

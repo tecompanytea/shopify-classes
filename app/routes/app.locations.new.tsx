@@ -10,7 +10,6 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { SUPPORTED_TIMEZONES } from "../lib/timezones";
 import {
   COUNTRY_OPTIONS,
   defaultLocationFormValues,
@@ -20,7 +19,6 @@ import {
   readLocationFormValues,
   type LocationFormValues,
 } from "../lib/location-form";
-import styles from "../styles/locationForm.module.css";
 
 type ActionData = {
   error?: string;
@@ -33,7 +31,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const values = readLocationFormValues(form);
 
   if (!values.name) return { error: "Location name is required.", values };
-  if (!values.timezone) return { error: "Timezone is required.", values };
 
   const invalidEmail = findInvalidEmail(values.bookingNotificationEmails);
   if (invalidEmail) {
@@ -84,8 +81,8 @@ export default function NewLocation() {
           Save
         </s-button>
 
-        <div className={styles.layout}>
-          <div className={styles.main}>
+        <s-grid gridTemplateColumns="minmax(0, 2fr) minmax(280px, 1fr)" gap="large-300">
+          <s-stack direction="block" gap="large-300">
             {actionData?.error && (
               <s-banner tone="critical">{actionData.error}</s-banner>
             )}
@@ -143,19 +140,6 @@ export default function NewLocation() {
                   defaultValue={values.postalCode}
                 />
 
-                <s-select
-                  name="timezone"
-                  label="Select Timezone"
-                  value={values.timezone}
-                  required
-                >
-                  <s-option value="">Select Timezone</s-option>
-                  {SUPPORTED_TIMEZONES.map((tz) => (
-                    <s-option key={tz.value} value={tz.value}>
-                      {tz.label}
-                    </s-option>
-                  ))}
-                </s-select>
               </s-stack>
             </s-section>
 
@@ -169,17 +153,17 @@ export default function NewLocation() {
                 defaultValue={values.bookingNotificationEmails}
               />
             </s-section>
-          </div>
+          </s-stack>
 
-          <div className={styles.aside}>
+          <s-stack direction="block" gap="large-300">
             <s-section>
               <s-select name="status" label="Status" value={values.status}>
                 <s-option value="enabled">Enabled</s-option>
                 <s-option value="disabled">Disabled</s-option>
               </s-select>
             </s-section>
-          </div>
-        </div>
+          </s-stack>
+        </s-grid>
       </s-page>
     </Form>
   );

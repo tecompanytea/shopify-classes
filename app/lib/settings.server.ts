@@ -1,4 +1,5 @@
 import db from "../db.server";
+import { CLASS_TIMEZONE } from "./class-config";
 
 // Returns the per-shop defaults, creating the row on first access.
 export async function getOrCreateShopSettings(shop: string) {
@@ -8,7 +9,7 @@ export async function getOrCreateShopSettings(shop: string) {
   });
   if (existing) return existing;
   return db.shopSettings.create({
-    data: { shop },
+    data: { shop, defaultTimezone: CLASS_TIMEZONE },
     include: { defaultLocation: true },
   });
 }

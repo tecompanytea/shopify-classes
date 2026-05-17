@@ -14,7 +14,7 @@ import { DateTime } from "luxon";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
-import { SUPPORTED_TIMEZONES } from "../lib/timezones";
+import { CLASS_TIMEZONE } from "../lib/class-config";
 import { formatSessionTitle, generateSessionSku } from "../lib/sku";
 import { ensureSessionDateOption } from "../.server/shopify/products";
 import {
@@ -30,12 +30,11 @@ import {
 
 type WizardLoader = {
   defaults: {
-    timezone: string;
     durationMin: number;
     capacity: number;
     locationId: string | null;
   };
-  locations: { id: string; name: string; timezone: string }[];
+  locations: { id: string; name: string }[];
   shopifyLocations: ShopifyLocation[];
 };
 
@@ -53,34 +52,39 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<WizardLoa
 
   return {
     defaults: {
-      timezone: settings.defaultTimezone,
       durationMin: settings.defaultDurationMin,
       capacity: settings.defaultCapacity,
       locationId: settings.defaultLocationId,
     },
-    locations: locations.map((l) => ({ id: l.id, name: l.name, timezone: l.timezone })),
+    locations: locations.map((l) => ({ id: l.id, name: l.name })),
     shopifyLocations,
   };
 };
 
 type ActionData = { error: string } | { ok: true };
+type ProductMode = "with-product" | "without-product";
 
 export const action = async ({ request }: ActionFunctionArgs): Promise<ActionData | Response> => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
 
+  const eventName = String(formData.get("eventName") ?? "").trim();
+  const productMode = String(formData.get("productMode") ?? "with-product") as ProductMode;
   const productGid = String(formData.get("productGid") ?? "");
   const productTitle = String(formData.get("productTitle") ?? "");
   const locationId = String(formData.get("locationId") ?? "");
   const shopifyLocationGid = String(formData.get("shopifyLocationGid") ?? "");
-  const timezone = String(formData.get("timezone") ?? "America/Los_Angeles");
   const durationMin = Number(formData.get("durationMin") ?? 60);
   const defaultCapacity = Number(formData.get("defaultCapacity") ?? 12);
-  const defaultPriceCents = formData.get("defaultPriceCents")
-    ? Number(formData.get("defaultPriceCents"))
-    : null;
+  const notes = String(formData.get("notes") ?? "").trim();
+  const tags = normalizeTags(String(formData.get("tags") ?? ""));
   const sessionsJson = String(formData.get("sessions") ?? "[]");
+  const eventTitle = eventName || productTitle;
 
+  if (!eventTitle) return { error: "Enter an event name to continue." };
+  if (productMode !== "with-product") {
+    return { error: "Events without products are not ready to create yet." };
+  }
   if (!productGid) return { error: "Pick a product to continue." };
   if (!shopifyLocationGid) {
     return { error: "Pick a Shopify location for inventory." };
@@ -89,7 +93,6 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
   let parsedSessions: Array<{
     startsAt: string;
     capacity?: number;
-    priceCents?: number | null;
   }>;
   try {
     parsedSessions = JSON.parse(sessionsJson);
@@ -102,16 +105,15 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
 
   // Build drafts (variant input + persistence rows)
   const drafts: SessionDraft[] = parsedSessions.map((s) => {
-    const startsAt = DateTime.fromISO(s.startsAt, { zone: timezone });
+    const startsAt = DateTime.fromISO(s.startsAt, { zone: CLASS_TIMEZONE });
     const endsAt = startsAt.plus({ minutes: durationMin });
     return {
       startsAt: startsAt.toJSDate(),
       endsAt: endsAt.toJSDate(),
-      timezone,
+      timezone: CLASS_TIMEZONE,
       capacity: s.capacity ?? defaultCapacity,
-      priceCents: s.priceCents ?? defaultPriceCents,
-      sku: generateSessionSku(productTitle, startsAt.toISO()!, timezone),
-      displayName: formatSessionTitle(startsAt.toISO()!, timezone),
+      sku: generateSessionSku(eventTitle, startsAt.toISO()!, CLASS_TIMEZONE),
+      displayName: formatSessionTitle(startsAt.toISO()!, CLASS_TIMEZONE),
     };
   });
 
@@ -147,23 +149,27 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     create: {
       shop: session.shop,
       productGid,
-      title: productTitle,
+      title: eventTitle,
       status: "active",
       locationId: locationId || null,
-      timezone,
+      timezone: CLASS_TIMEZONE,
       durationMin,
       defaultCapacity,
-      defaultPriceCents,
+      defaultPriceCents: null,
+      notes: notes || null,
+      tags: tags || null,
       publishedAt: new Date(),
     },
     update: {
-      title: productTitle,
+      title: eventTitle,
       status: "active",
       locationId: locationId || null,
-      timezone,
+      timezone: CLASS_TIMEZONE,
       durationMin,
       defaultCapacity,
-      defaultPriceCents,
+      defaultPriceCents: null,
+      notes: notes || null,
+      tags: tags || null,
       publishedAt: new Date(),
     },
   });
@@ -177,9 +183,9 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
       sku: c.sku,
       startsAt: drafts[idx].startsAt,
       endsAt: drafts[idx].endsAt,
-      timezone,
+      timezone: CLASS_TIMEZONE,
       capacity: drafts[idx].capacity,
-      priceCents: drafts[idx].priceCents ?? null,
+      priceCents: null,
     })),
     skipDuplicates: true,
   });
@@ -203,7 +209,6 @@ type SessionRow = {
   date: string; // YYYY-MM-DD
   time: string; // HH:MM (24h)
   capacity?: number;
-  priceCents?: number;
 };
 
 export default function NewClassWizard() {
@@ -212,33 +217,34 @@ export default function NewClassWizard() {
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
 
+  const [eventName, setEventName] = useState("");
+  const [productMode, setProductMode] = useState<ProductMode>("with-product");
   const [picked, setPicked] = useState<PickedProduct | null>(null);
   const [locationId, setLocationId] = useState(defaults.locationId ?? "");
   const [shopifyLocationGid, setShopifyLocationGid] = useState(
     shopifyLocations[0]?.id ?? "",
   );
-  const [timezone, setTimezone] = useState(defaults.timezone);
   const [durationMin, setDurationMin] = useState(defaults.durationMin);
   const [defaultCapacity, setDefaultCapacity] = useState(defaults.capacity);
-  const [defaultPriceCents, setDefaultPriceCents] = useState<number | "">("");
+  const [notes, setNotes] = useState("");
+  const [tags, setTags] = useState("");
 
   const todayIso = useMemo(
-    () => DateTime.now().setZone(timezone).toFormat("yyyy-LL-dd"),
-    [timezone],
+    () => DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd"),
+    [],
   );
   const [sessions, setSessions] = useState<SessionRow[]>([{ date: todayIso, time: "15:00" }]);
   const sessionsPayload = useMemo(() => {
     return sessions
       .filter((s) => s.date && s.time)
       .map((s) => {
-        const iso = DateTime.fromISO(`${s.date}T${s.time}`, { zone: timezone }).toISO();
+        const iso = DateTime.fromISO(`${s.date}T${s.time}`, { zone: CLASS_TIMEZONE }).toISO();
         return {
           startsAt: iso,
           capacity: s.capacity ?? defaultCapacity,
-          priceCents: s.priceCents ?? (defaultPriceCents === "" ? null : defaultPriceCents),
         };
       });
-  }, [sessions, timezone, defaultCapacity, defaultPriceCents]);
+  }, [sessions, defaultCapacity]);
 
   const pickProduct = async () => {
     // App Bridge ResourcePicker, available globally inside embedded apps.
@@ -254,24 +260,20 @@ export default function NewClassWizard() {
     const first = Array.isArray(result) ? result[0] : undefined;
     if (first) {
       setPicked({ id: first.id, title: first.title, handle: first.handle });
+      setEventName((current) => current || first.title);
     }
   };
 
+  const eventTitle = eventName.trim();
+  const withProduct = productMode === "with-product";
   const displayLocationName =
     locations.find((l) => l.id === locationId)?.name ?? "—";
-  const inventoryLocationName =
-    shopifyLocations.find((l) => l.id === shopifyLocationGid)?.name ?? "—";
-  const defaultPriceLabel =
-    defaultPriceCents === "" ? "Product price" : `$${(defaultPriceCents / 100).toFixed(2)}`;
-  const reviewRows = [
-    { label: "Product", value: picked?.title ?? "—" },
-    { label: "Timezone", value: timezone },
+  const summaryRows = [
+    { label: "Event name", value: eventTitle || "—" },
+    { label: "Product", value: withProduct ? picked?.title ?? "—" : "No product" },
     { label: "Duration", value: `${durationMin} min` },
-    { label: "Default capacity", value: `${defaultCapacity} seats` },
-    { label: "Default price", value: defaultPriceLabel },
-    { label: "Display location", value: displayLocationName },
-    { label: "Inventory location", value: inventoryLocationName },
-    { label: "Sessions", value: `${sessionsPayload.length}` },
+    { label: "Capacity", value: `${defaultCapacity} seats` },
+    { label: "Location", value: displayLocationName },
   ];
 
   return (
@@ -280,233 +282,236 @@ export default function NewClassWizard() {
         <s-banner tone="critical">{actionData.error}</s-banner>
       )}
 
-      <s-grid gridTemplateColumns="minmax(0, 2fr) minmax(320px, 1fr)" gap="large-300">
-        <s-stack direction="block" gap="large-300">
-          <s-section heading="Product">
-            <s-paragraph>
-              Each event is a Shopify product. Pick an existing one or create it first
-              in Shopify, then come back here.
-            </s-paragraph>
-            {picked ? (
-              <s-stack direction="block" gap="base">
-                <s-stack direction="inline" gap="base">
-                  <s-badge tone="success">Selected</s-badge>
-                  <s-text type="strong">{picked.title}</s-text>
-                </s-stack>
-                <s-button type="button" onClick={pickProduct}>Change product</s-button>
-              </s-stack>
-            ) : (
-              <s-button type="button" variant="primary" onClick={pickProduct}>
-                Pick a Shopify product
-              </s-button>
-            )}
-          </s-section>
-
-          <s-section heading="Defaults">
-            <s-paragraph>
-              These apply to every session. You can override capacity and price per session.
-            </s-paragraph>
-            <s-stack direction="block" gap="base">
-              <s-select
-                label="Timezone"
-                value={timezone}
-                onChange={(e) => setTimezone((e.target as HTMLSelectElement).value)}
-              >
-                {SUPPORTED_TIMEZONES.map((tz) => (
-                  <s-option key={tz.value} value={tz.value}>
-                    {tz.label}
-                  </s-option>
-                ))}
-              </s-select>
-
-              <s-select
-                label="Location (display)"
-                details="Used on the product page and confirmation email. Manage in Locations."
-                value={locationId}
-                onChange={(e) => setLocationId((e.target as HTMLSelectElement).value)}
-              >
-                <s-option value="">None</s-option>
-                {locations.map((l) => (
-                  <s-option key={l.id} value={l.id}>
-                    {l.name}
-                  </s-option>
-                ))}
-              </s-select>
-
-              <s-select
-                label="Shopify inventory location"
-                details="Where seat inventory is tracked. Required for checkout."
-                value={shopifyLocationGid}
-                onChange={(e) => setShopifyLocationGid((e.target as HTMLSelectElement).value)}
-              >
-                {shopifyLocations.map((l) => (
-                  <s-option key={l.id} value={l.id}>
-                    {l.name}
-                  </s-option>
-                ))}
-              </s-select>
-
-              <s-number-field
-                label="Duration (minutes)"
-                value={String(durationMin)}
-                onChange={(e) => setDurationMin(Number((e.target as HTMLInputElement).value) || 0)}
-              />
-              <s-number-field
-                label="Default capacity (seats)"
-                value={String(defaultCapacity)}
-                onChange={(e) => setDefaultCapacity(Number((e.target as HTMLInputElement).value) || 0)}
-              />
-              <s-number-field
-                label="Default price"
-                details="Optional. Leave blank to keep the product's existing price."
-                step={0.01}
-                value={defaultPriceCents === "" ? "" : (defaultPriceCents / 100).toString()}
-                onChange={(e) => {
-                  const v = (e.target as HTMLInputElement).value;
-                  setDefaultPriceCents(v === "" ? "" : Math.round(Number(v) * 100));
-                }}
-              />
-            </s-stack>
-          </s-section>
-
-          <s-section heading="Sessions">
-            <s-paragraph>
-              Each row becomes a Shopify variant on this product. Inventory equals
-              capacity. SKU is generated from the product name and start time.
-            </s-paragraph>
-
-            <s-stack direction="block" gap="base">
-              {sessions.map((row, idx) => (
-                <s-stack key={idx} direction="inline" gap="base">
-                  <s-date-field
-                    label={idx === 0 ? "Date" : undefined}
-                    value={row.date}
-                    onChange={(e) => updateRow(setSessions, idx, { date: (e.target as HTMLInputElement).value })}
-                  />
-                  <s-text-field
-                    label={idx === 0 ? "Start time" : undefined}
-                    placeholder="15:00"
-                    value={row.time}
-                    onChange={(e) => updateRow(setSessions, idx, { time: (e.target as HTMLInputElement).value })}
-                  />
-                  <s-number-field
-                    label={idx === 0 ? "Capacity" : undefined}
-                    placeholder={String(defaultCapacity)}
-                    value={row.capacity != null ? String(row.capacity) : ""}
-                    onChange={(e) =>
-                      updateRow(setSessions, idx, {
-                        capacity: (e.target as HTMLInputElement).value
-                          ? Number((e.target as HTMLInputElement).value)
-                          : undefined,
-                      })
-                    }
-                  />
-                  <s-number-field
-                    label={idx === 0 ? "Price override" : undefined}
-                    placeholder={defaultPriceCents === "" ? "Product price" : (defaultPriceCents / 100).toFixed(2)}
-                    step={0.01}
-                    value={row.priceCents != null ? (row.priceCents / 100).toString() : ""}
-                    onChange={(e) => {
-                      const v = (e.target as HTMLInputElement).value;
-                      updateRow(setSessions, idx, {
-                        priceCents: v === "" ? undefined : Math.round(Number(v) * 100),
-                      });
-                    }}
-                  />
-                  <s-button
-                    type="button"
-                    onClick={() => setSessions((rs) => rs.filter((_, i) => i !== idx))}
-                    disabled={sessions.length === 1}
-                  >
-                    Remove
-                  </s-button>
-                </s-stack>
-              ))}
-
-              <s-button
-                type="button"
-                onClick={() =>
-                  setSessions((rs) => [
-                    ...rs,
-                    { date: rs[rs.length - 1]?.date ?? todayIso, time: rs[rs.length - 1]?.time ?? "15:00" },
-                  ])
-                }
-              >
-                Add session
-              </s-button>
-            </s-stack>
-          </s-section>
-        </s-stack>
-
-        <s-stack direction="block" gap="large-300">
-          <s-section heading="Summary">
+      <s-stack direction="block" gap="base">
+        <s-grid gridTemplateColumns="minmax(0, 2fr) minmax(280px, 1fr)" gap="base">
           <s-stack direction="block" gap="base">
-            <s-table>
-              <s-table-header-row>
-                <s-table-header listSlot="primary">Setting</s-table-header>
-                <s-table-header listSlot="secondary">Value</s-table-header>
-              </s-table-header-row>
-              <s-table-body>
-                {reviewRows.map((row) => (
-                  <s-table-row key={row.label}>
-                    <s-table-cell>{row.label}</s-table-cell>
-                    <s-table-cell>{row.value}</s-table-cell>
-                  </s-table-row>
-                ))}
-              </s-table-body>
-            </s-table>
+            <s-section heading="Event name">
+              <s-text-field
+                label="Event name"
+                labelAccessibilityVisibility="exclusive"
+                placeholder="Eg. Tea tasting"
+                details="Enter a name to identify this event."
+                value={eventName}
+                onChange={(e) => setEventName((e.target as HTMLInputElement).value)}
+              />
+            </s-section>
 
-            <s-table>
-              <s-table-header-row>
-                <s-table-header listSlot="primary">Session</s-table-header>
-                <s-table-header format="numeric">Capacity</s-table-header>
-                <s-table-header>Price</s-table-header>
-              </s-table-header-row>
-              <s-table-body>
-                {sessionsPayload.map((s, i) => (
-                  <s-table-row key={`${s.startsAt}-${i}`}>
-                    <s-table-cell>{formatSessionTitle(s.startsAt!, timezone)}</s-table-cell>
-                    <s-table-cell>{s.capacity}</s-table-cell>
-                    <s-table-cell>
-                      {s.priceCents != null
-                        ? `$${(s.priceCents / 100).toFixed(2)}`
-                        : "Product price"}
-                    </s-table-cell>
-                  </s-table-row>
+            <s-section accessibilityLabel="Product connection">
+              <s-stack direction="block" gap="base">
+                <s-choice-list
+                  label="Product connection"
+                  labelAccessibilityVisibility="exclusive"
+                  values={[productMode]}
+                  onChange={(e) => {
+                    const [value] = (e.currentTarget as HTMLElement & { values?: string[] }).values ?? [];
+                    setProductMode(value === "without-product" ? "without-product" : "with-product");
+                  }}
+                >
+                  <s-choice value="with-product">Create event with product</s-choice>
+                  <s-choice value="without-product">Create event without product</s-choice>
+                </s-choice-list>
+
+                {withProduct && (
+                  <s-stack direction="block" gap="base">
+                    <s-paragraph>
+                      Link this event to a product to enable pricing and payment collection.
+                    </s-paragraph>
+                    {picked ? (
+                      <s-stack direction="block" gap="base">
+                        <s-stack direction="inline" gap="base">
+                          <s-badge tone="success">Selected</s-badge>
+                          <s-text type="strong">{picked.title}</s-text>
+                        </s-stack>
+                        <s-button type="button" onClick={pickProduct}>Change product</s-button>
+                      </s-stack>
+                    ) : (
+                      <s-button type="button" variant="primary" onClick={pickProduct}>
+                        Add product
+                      </s-button>
+                    )}
+                  </s-stack>
+                )}
+              </s-stack>
+            </s-section>
+
+            <s-section heading="Defaults">
+              <s-paragraph>
+                These apply to every session. Price comes from the selected Shopify product.
+              </s-paragraph>
+              <s-stack direction="block" gap="base">
+                <s-select
+                  label="Location (display)"
+                  details="Used on the product page and confirmation email. Manage in Locations."
+                  value={locationId}
+                  onChange={(e) => setLocationId((e.target as HTMLSelectElement).value)}
+                >
+                  <s-option value="">None</s-option>
+                  {locations.map((l) => (
+                    <s-option key={l.id} value={l.id}>
+                      {l.name}
+                    </s-option>
+                  ))}
+                </s-select>
+
+                <s-select
+                  label="Shopify inventory location"
+                  details="Where seat inventory is tracked. Required for checkout."
+                  value={shopifyLocationGid}
+                  onChange={(e) => setShopifyLocationGid((e.target as HTMLSelectElement).value)}
+                >
+                  {shopifyLocations.map((l) => (
+                    <s-option key={l.id} value={l.id}>
+                      {l.name}
+                    </s-option>
+                  ))}
+                </s-select>
+
+                <s-number-field
+                  label="Duration (minutes)"
+                  value={String(durationMin)}
+                  onChange={(e) => setDurationMin(Number((e.target as HTMLInputElement).value) || 0)}
+                />
+                <s-number-field
+                  label="Default capacity (seats)"
+                  value={String(defaultCapacity)}
+                  onChange={(e) => setDefaultCapacity(Number((e.target as HTMLInputElement).value) || 0)}
+                />
+              </s-stack>
+            </s-section>
+
+            <s-section heading="Sessions">
+              <s-paragraph>
+                Each row becomes a Shopify variant on this product. Inventory equals
+                capacity. SKU is generated from the product name and start time.
+              </s-paragraph>
+
+              <s-stack direction="block" gap="base">
+                {sessions.map((row, idx) => (
+                  <s-stack key={idx} direction="inline" gap="base">
+                    <s-date-field
+                      label={idx === 0 ? "Date" : undefined}
+                      value={row.date}
+                      onChange={(e) => updateRow(setSessions, idx, { date: (e.target as HTMLInputElement).value })}
+                    />
+                    <s-text-field
+                      label={idx === 0 ? "Start time" : undefined}
+                      placeholder="15:00"
+                      value={row.time}
+                      onChange={(e) => updateRow(setSessions, idx, { time: (e.target as HTMLInputElement).value })}
+                    />
+                    <s-number-field
+                      label={idx === 0 ? "Capacity" : undefined}
+                      placeholder={String(defaultCapacity)}
+                      value={row.capacity != null ? String(row.capacity) : ""}
+                      onChange={(e) =>
+                        updateRow(setSessions, idx, {
+                          capacity: (e.target as HTMLInputElement).value
+                            ? Number((e.target as HTMLInputElement).value)
+                            : undefined,
+                        })
+                      }
+                    />
+                    <s-button
+                      type="button"
+                      onClick={() => setSessions((rs) => rs.filter((_, i) => i !== idx))}
+                      disabled={sessions.length === 1}
+                    >
+                      Remove
+                    </s-button>
+                  </s-stack>
                 ))}
-              </s-table-body>
-            </s-table>
+
+                <s-button
+                  type="button"
+                  onClick={() =>
+                    setSessions((rs) => [
+                      ...rs,
+                      { date: rs[rs.length - 1]?.date ?? todayIso, time: rs[rs.length - 1]?.time ?? "15:00" },
+                    ])
+                  }
+                >
+                  Add session
+                </s-button>
+              </s-stack>
+            </s-section>
           </s-stack>
-          </s-section>
 
-          <Form method="post">
-            <input type="hidden" name="productGid" value={picked?.id ?? ""} />
-            <input type="hidden" name="productTitle" value={picked?.title ?? ""} />
-            <input type="hidden" name="locationId" value={locationId} />
-            <input type="hidden" name="shopifyLocationGid" value={shopifyLocationGid} />
-            <input type="hidden" name="timezone" value={timezone} />
-            <input type="hidden" name="durationMin" value={durationMin} />
-            <input type="hidden" name="defaultCapacity" value={defaultCapacity} />
-            <input
-              type="hidden"
-              name="defaultPriceCents"
-              value={defaultPriceCents === "" ? "" : defaultPriceCents}
-            />
-            <input type="hidden" name="sessions" value={JSON.stringify(sessionsPayload)} />
+          <s-stack direction="block" gap="base">
+            <s-section heading="Notes">
+              <s-text-area
+                label="Notes"
+                labelAccessibilityVisibility="exclusive"
+                placeholder="No notes"
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes((e.target as HTMLTextAreaElement).value)}
+              />
+            </s-section>
 
-            <s-stack direction="inline" gap="base">
-              <s-button
-                type="submit"
-                variant="primary"
-                loading={submitting ? true : undefined}
-                disabled={!picked || sessionsPayload.length === 0 || submitting}
-              >
-                Create event & sessions
-              </s-button>
-            </s-stack>
-          </Form>
-        </s-stack>
-      </s-grid>
+            <s-section heading="Tags">
+              <s-text-field
+                label="Tags"
+                labelAccessibilityVisibility="exclusive"
+                value={tags}
+                onChange={(e) => setTags((e.target as HTMLInputElement).value)}
+              />
+            </s-section>
+          </s-stack>
+        </s-grid>
+
+        <s-section heading="Summary">
+          <s-stack direction="block" gap="base">
+            <s-box border="base" borderRadius="base" padding="base">
+              <s-stack direction="block" gap="base">
+                {summaryRows.map((row) => (
+                  <s-grid
+                    key={row.label}
+                    gridTemplateColumns="minmax(0, 1fr) minmax(0, 2fr)"
+                    gap="base"
+                  >
+                    <s-text>{row.label}</s-text>
+                    <s-text>{row.value}</s-text>
+                  </s-grid>
+                ))}
+              </s-stack>
+            </s-box>
+
+            <Form method="post">
+              <input type="hidden" name="eventName" value={eventTitle} />
+              <input type="hidden" name="productMode" value={productMode} />
+              <input type="hidden" name="productGid" value={picked?.id ?? ""} />
+              <input type="hidden" name="productTitle" value={picked?.title ?? ""} />
+              <input type="hidden" name="locationId" value={locationId} />
+              <input type="hidden" name="shopifyLocationGid" value={shopifyLocationGid} />
+              <input type="hidden" name="durationMin" value={durationMin} />
+              <input type="hidden" name="defaultCapacity" value={defaultCapacity} />
+              <input type="hidden" name="notes" value={notes} />
+              <input type="hidden" name="tags" value={tags} />
+              <input type="hidden" name="sessions" value={JSON.stringify(sessionsPayload)} />
+
+              <s-box paddingBlockStart="base">
+                <s-grid justifyItems="end">
+                  <s-button
+                    type="submit"
+                    variant="primary"
+                    loading={submitting ? true : undefined}
+                    disabled={
+                      !eventTitle ||
+                      !withProduct ||
+                      !picked ||
+                      !shopifyLocationGid ||
+                      sessionsPayload.length === 0 ||
+                      submitting
+                    }
+                  >
+                    Create event
+                  </s-button>
+                </s-grid>
+              </s-box>
+            </Form>
+          </s-stack>
+        </s-section>
+      </s-stack>
     </s-page>
   );
 }
@@ -517,4 +522,12 @@ function updateRow(
   patch: Partial<SessionRow>,
 ) {
   set((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+}
+
+function normalizeTags(value: string): string | null {
+  const tags = value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  return tags.length ? tags.join(", ") : null;
 }
