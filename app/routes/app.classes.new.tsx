@@ -212,7 +212,6 @@ export default function NewClassWizard() {
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [picked, setPicked] = useState<PickedProduct | null>(null);
   const [locationId, setLocationId] = useState(defaults.locationId ?? "");
   const [shopifyLocationGid, setShopifyLocationGid] = useState(
@@ -258,225 +257,227 @@ export default function NewClassWizard() {
     }
   };
 
+  const displayLocationName =
+    locations.find((l) => l.id === locationId)?.name ?? "—";
+  const inventoryLocationName =
+    shopifyLocations.find((l) => l.id === shopifyLocationGid)?.name ?? "—";
+  const defaultPriceLabel =
+    defaultPriceCents === "" ? "Product price" : `$${(defaultPriceCents / 100).toFixed(2)}`;
+  const reviewRows = [
+    { label: "Product", value: picked?.title ?? "—" },
+    { label: "Timezone", value: timezone },
+    { label: "Duration", value: `${durationMin} min` },
+    { label: "Default capacity", value: `${defaultCapacity} seats` },
+    { label: "Default price", value: defaultPriceLabel },
+    { label: "Display location", value: displayLocationName },
+    { label: "Inventory location", value: inventoryLocationName },
+    { label: "Sessions", value: `${sessionsPayload.length}` },
+  ];
+
   return (
-    <s-page heading="New class" back-href="/app/classes">
-      <s-section heading={`Step ${step} of 4`}>
-        <Stepper step={step} />
-      </s-section>
+    <s-page heading="New event" back-href="/app/classes">
+      {actionData && "error" in actionData && (
+        <s-banner tone="critical">{actionData.error}</s-banner>
+      )}
 
-      {step === 1 && (
-        <s-section heading="Pick the product">
-          <s-paragraph>
-            Each class is a Shopify product. Pick an existing one or create it first
-            in Shopify, then come back here.
-          </s-paragraph>
-          {picked ? (
+      <s-grid gridTemplateColumns="minmax(0, 2fr) minmax(320px, 1fr)" gap="large-300">
+        <s-stack direction="block" gap="large-300">
+          <s-section heading="Product">
+            <s-paragraph>
+              Each event is a Shopify product. Pick an existing one or create it first
+              in Shopify, then come back here.
+            </s-paragraph>
+            {picked ? (
+              <s-stack direction="block" gap="base">
+                <s-stack direction="inline" gap="base">
+                  <s-badge tone="success">Selected</s-badge>
+                  <s-text type="strong">{picked.title}</s-text>
+                </s-stack>
+                <s-button type="button" onClick={pickProduct}>Change product</s-button>
+              </s-stack>
+            ) : (
+              <s-button type="button" variant="primary" onClick={pickProduct}>
+                Pick a Shopify product
+              </s-button>
+            )}
+          </s-section>
+
+          <s-section heading="Defaults">
+            <s-paragraph>
+              These apply to every session. You can override capacity and price per session.
+            </s-paragraph>
             <s-stack direction="block" gap="base">
-              <s-stack direction="inline" gap="base">
-                <s-badge tone="success">Selected</s-badge>
-                <s-text><strong>{picked.title}</strong></s-text>
-              </s-stack>
-              <s-stack direction="inline" gap="base">
-                <s-button onClick={pickProduct}>Change product</s-button>
-                <s-button variant="primary" onClick={() => setStep(2)}>
-                  Continue
-                </s-button>
-              </s-stack>
+              <s-select
+                label="Timezone"
+                value={timezone}
+                onChange={(e) => setTimezone((e.target as HTMLSelectElement).value)}
+              >
+                {SUPPORTED_TIMEZONES.map((tz) => (
+                  <s-option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </s-option>
+                ))}
+              </s-select>
+
+              <s-select
+                label="Location (display)"
+                details="Used on the product page and confirmation email. Manage in Locations."
+                value={locationId}
+                onChange={(e) => setLocationId((e.target as HTMLSelectElement).value)}
+              >
+                <s-option value="">None</s-option>
+                {locations.map((l) => (
+                  <s-option key={l.id} value={l.id}>
+                    {l.name}
+                  </s-option>
+                ))}
+              </s-select>
+
+              <s-select
+                label="Shopify inventory location"
+                details="Where seat inventory is tracked. Required for checkout."
+                value={shopifyLocationGid}
+                onChange={(e) => setShopifyLocationGid((e.target as HTMLSelectElement).value)}
+              >
+                {shopifyLocations.map((l) => (
+                  <s-option key={l.id} value={l.id}>
+                    {l.name}
+                  </s-option>
+                ))}
+              </s-select>
+
+              <s-number-field
+                label="Duration (minutes)"
+                value={String(durationMin)}
+                onChange={(e) => setDurationMin(Number((e.target as HTMLInputElement).value) || 0)}
+              />
+              <s-number-field
+                label="Default capacity (seats)"
+                value={String(defaultCapacity)}
+                onChange={(e) => setDefaultCapacity(Number((e.target as HTMLInputElement).value) || 0)}
+              />
+              <s-number-field
+                label="Default price"
+                details="Optional. Leave blank to keep the product's existing price."
+                step={0.01}
+                value={defaultPriceCents === "" ? "" : (defaultPriceCents / 100).toString()}
+                onChange={(e) => {
+                  const v = (e.target as HTMLInputElement).value;
+                  setDefaultPriceCents(v === "" ? "" : Math.round(Number(v) * 100));
+                }}
+              />
             </s-stack>
-          ) : (
-            <s-button variant="primary" onClick={pickProduct}>
-              Pick a Shopify product
-            </s-button>
-          )}
-        </s-section>
-      )}
+          </s-section>
 
-      {step === 2 && (
-        <s-section heading="Defaults">
-          <s-paragraph>
-            These apply to every session you generate next. You can override per
-            session in step 3.
-          </s-paragraph>
+          <s-section heading="Sessions">
+            <s-paragraph>
+              Each row becomes a Shopify variant on this product. Inventory equals
+              capacity. SKU is generated from the product name and start time.
+            </s-paragraph>
+
+            <s-stack direction="block" gap="base">
+              {sessions.map((row, idx) => (
+                <s-stack key={idx} direction="inline" gap="base">
+                  <s-date-field
+                    label={idx === 0 ? "Date" : undefined}
+                    value={row.date}
+                    onChange={(e) => updateRow(setSessions, idx, { date: (e.target as HTMLInputElement).value })}
+                  />
+                  <s-text-field
+                    label={idx === 0 ? "Start time" : undefined}
+                    placeholder="15:00"
+                    value={row.time}
+                    onChange={(e) => updateRow(setSessions, idx, { time: (e.target as HTMLInputElement).value })}
+                  />
+                  <s-number-field
+                    label={idx === 0 ? "Capacity" : undefined}
+                    placeholder={String(defaultCapacity)}
+                    value={row.capacity != null ? String(row.capacity) : ""}
+                    onChange={(e) =>
+                      updateRow(setSessions, idx, {
+                        capacity: (e.target as HTMLInputElement).value
+                          ? Number((e.target as HTMLInputElement).value)
+                          : undefined,
+                      })
+                    }
+                  />
+                  <s-number-field
+                    label={idx === 0 ? "Price override" : undefined}
+                    placeholder={defaultPriceCents === "" ? "Product price" : (defaultPriceCents / 100).toFixed(2)}
+                    step={0.01}
+                    value={row.priceCents != null ? (row.priceCents / 100).toString() : ""}
+                    onChange={(e) => {
+                      const v = (e.target as HTMLInputElement).value;
+                      updateRow(setSessions, idx, {
+                        priceCents: v === "" ? undefined : Math.round(Number(v) * 100),
+                      });
+                    }}
+                  />
+                  <s-button
+                    type="button"
+                    onClick={() => setSessions((rs) => rs.filter((_, i) => i !== idx))}
+                    disabled={sessions.length === 1}
+                  >
+                    Remove
+                  </s-button>
+                </s-stack>
+              ))}
+
+              <s-button
+                type="button"
+                onClick={() =>
+                  setSessions((rs) => [
+                    ...rs,
+                    { date: rs[rs.length - 1]?.date ?? todayIso, time: rs[rs.length - 1]?.time ?? "15:00" },
+                  ])
+                }
+              >
+                Add session
+              </s-button>
+            </s-stack>
+          </s-section>
+        </s-stack>
+
+        <s-stack direction="block" gap="large-300">
+          <s-section heading="Summary">
           <s-stack direction="block" gap="base">
-            <s-select
-              label="Timezone"
-              value={timezone}
-              onChange={(e) => setTimezone((e.target as HTMLSelectElement).value)}
-            >
-              {SUPPORTED_TIMEZONES.map((tz) => (
-                <s-option key={tz.value} value={tz.value}>
-                  {tz.label}
-                </s-option>
-              ))}
-            </s-select>
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Setting</s-table-header>
+                <s-table-header listSlot="secondary">Value</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {reviewRows.map((row) => (
+                  <s-table-row key={row.label}>
+                    <s-table-cell>{row.label}</s-table-cell>
+                    <s-table-cell>{row.value}</s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
 
-            <s-select
-              label="Location (display)"
-              details="Used on the product page and confirmation email. Manage in Locations."
-              value={locationId}
-              onChange={(e) => setLocationId((e.target as HTMLSelectElement).value)}
-            >
-              <s-option value="">None</s-option>
-              {locations.map((l) => (
-                <s-option key={l.id} value={l.id}>
-                  {l.name}
-                </s-option>
-              ))}
-            </s-select>
-
-            <s-select
-              label="Shopify inventory location"
-              details="Where seat inventory is tracked. Required for checkout."
-              value={shopifyLocationGid}
-              onChange={(e) => setShopifyLocationGid((e.target as HTMLSelectElement).value)}
-            >
-              {shopifyLocations.map((l) => (
-                <s-option key={l.id} value={l.id}>
-                  {l.name}
-                </s-option>
-              ))}
-            </s-select>
-
-            <s-number-field
-              label="Duration (minutes)"
-              value={String(durationMin)}
-              onChange={(e) => setDurationMin(Number((e.target as HTMLInputElement).value) || 0)}
-            />
-            <s-number-field
-              label="Default capacity (seats)"
-              value={String(defaultCapacity)}
-              onChange={(e) => setDefaultCapacity(Number((e.target as HTMLInputElement).value) || 0)}
-            />
-            <s-number-field
-              label="Default price"
-              details="Optional. Leave blank to keep the product's existing price."
-              step={0.01}
-              value={defaultPriceCents === "" ? "" : (defaultPriceCents / 100).toString()}
-              onChange={(e) => {
-                const v = (e.target as HTMLInputElement).value;
-                setDefaultPriceCents(v === "" ? "" : Math.round(Number(v) * 100));
-              }}
-            />
+            <s-table>
+              <s-table-header-row>
+                <s-table-header listSlot="primary">Session</s-table-header>
+                <s-table-header format="numeric">Capacity</s-table-header>
+                <s-table-header>Price</s-table-header>
+              </s-table-header-row>
+              <s-table-body>
+                {sessionsPayload.map((s, i) => (
+                  <s-table-row key={`${s.startsAt}-${i}`}>
+                    <s-table-cell>{formatSessionTitle(s.startsAt!, timezone)}</s-table-cell>
+                    <s-table-cell>{s.capacity}</s-table-cell>
+                    <s-table-cell>
+                      {s.priceCents != null
+                        ? `$${(s.priceCents / 100).toFixed(2)}`
+                        : "Product price"}
+                    </s-table-cell>
+                  </s-table-row>
+                ))}
+              </s-table-body>
+            </s-table>
           </s-stack>
-
-          <s-stack direction="inline" gap="base">
-            <s-button onClick={() => setStep(1)}>Back</s-button>
-            <s-button variant="primary" onClick={() => setStep(3)}>
-              Continue
-            </s-button>
-          </s-stack>
-        </s-section>
-      )}
-
-      {step === 3 && (
-        <s-section heading="Sessions">
-          <s-paragraph>
-            Each row becomes a Shopify variant on this product. Inventory equals
-            capacity. SKU is generated from the product name and start time.
-          </s-paragraph>
-
-          <s-stack direction="block" gap="base">
-            {sessions.map((row, idx) => (
-              <s-stack key={idx} direction="inline" gap="base">
-                <s-date-field
-                  label={idx === 0 ? "Date" : undefined}
-                  value={row.date}
-                  onChange={(e) => updateRow(setSessions, idx, { date: (e.target as HTMLInputElement).value })}
-                />
-                <s-text-field
-                  label={idx === 0 ? "Start time" : undefined}
-                  placeholder="15:00"
-                  value={row.time}
-                  onChange={(e) => updateRow(setSessions, idx, { time: (e.target as HTMLInputElement).value })}
-                />
-                <s-number-field
-                  label={idx === 0 ? "Capacity" : undefined}
-                  placeholder={String(defaultCapacity)}
-                  value={row.capacity != null ? String(row.capacity) : ""}
-                  onChange={(e) =>
-                    updateRow(setSessions, idx, {
-                      capacity: (e.target as HTMLInputElement).value
-                        ? Number((e.target as HTMLInputElement).value)
-                        : undefined,
-                    })
-                  }
-                />
-                <s-number-field
-                  label={idx === 0 ? "Price override" : undefined}
-                  placeholder={defaultPriceCents === "" ? "Product price" : (defaultPriceCents / 100).toFixed(2)}
-                  step={0.01}
-                  value={row.priceCents != null ? (row.priceCents / 100).toString() : ""}
-                  onChange={(e) => {
-                    const v = (e.target as HTMLInputElement).value;
-                    updateRow(setSessions, idx, {
-                      priceCents: v === "" ? undefined : Math.round(Number(v) * 100),
-                    });
-                  }}
-                />
-                <s-button
-                  onClick={() => setSessions((rs) => rs.filter((_, i) => i !== idx))}
-                  disabled={sessions.length === 1}
-                >
-                  Remove
-                </s-button>
-              </s-stack>
-            ))}
-
-            <s-button
-              onClick={() =>
-                setSessions((rs) => [
-                  ...rs,
-                  { date: rs[rs.length - 1]?.date ?? todayIso, time: rs[rs.length - 1]?.time ?? "15:00" },
-                ])
-              }
-            >
-              Add session
-            </s-button>
-          </s-stack>
-
-          <s-stack direction="inline" gap="base">
-            <s-button onClick={() => setStep(2)}>Back</s-button>
-            <s-button variant="primary" onClick={() => setStep(4)}>
-              Review
-            </s-button>
-          </s-stack>
-        </s-section>
-      )}
-
-      {step === 4 && (
-        <s-section heading="Review">
-          <s-stack direction="block" gap="base">
-            <Row label="Product" value={picked?.title ?? "—"} />
-            <Row label="Timezone" value={timezone} />
-            <Row label="Duration" value={`${durationMin} min`} />
-            <Row label="Default capacity" value={`${defaultCapacity} seats`} />
-            <Row
-              label="Default price"
-              value={defaultPriceCents === "" ? "Product price" : `$${(defaultPriceCents / 100).toFixed(2)}`}
-            />
-            <Row
-              label="Display location"
-              value={locations.find((l) => l.id === locationId)?.name ?? "—"}
-            />
-            <Row
-              label="Inventory location"
-              value={shopifyLocations.find((l) => l.id === shopifyLocationGid)?.name ?? "—"}
-            />
-            <Row label="Sessions" value={`${sessionsPayload.length}`} />
-
-            <ul style={{ paddingLeft: "1rem", margin: 0 }}>
-              {sessionsPayload.map((s, i) => (
-                <li key={i}>
-                  {formatSessionTitle(s.startsAt!, timezone)} · {s.capacity} seats
-                  {s.priceCents != null ? ` · $${(s.priceCents / 100).toFixed(2)}` : ""}
-                </li>
-              ))}
-            </ul>
-          </s-stack>
-
-          {actionData && "error" in actionData && (
-            <s-banner tone="critical">{actionData.error}</s-banner>
-          )}
+          </s-section>
 
           <Form method="post">
             <input type="hidden" name="productGid" value={picked?.id ?? ""} />
@@ -494,16 +495,18 @@ export default function NewClassWizard() {
             <input type="hidden" name="sessions" value={JSON.stringify(sessionsPayload)} />
 
             <s-stack direction="inline" gap="base">
-              <s-button onClick={() => setStep(3)} disabled={submitting}>
-                Back
-              </s-button>
-              <s-button type="submit" variant="primary" loading={submitting ? true : undefined}>
-                Create class & sessions
+              <s-button
+                type="submit"
+                variant="primary"
+                loading={submitting ? true : undefined}
+                disabled={!picked || sessionsPayload.length === 0 || submitting}
+              >
+                Create event & sessions
               </s-button>
             </s-stack>
           </Form>
-        </s-section>
-      )}
+        </s-stack>
+      </s-grid>
     </s-page>
   );
 }
@@ -514,34 +517,4 @@ function updateRow(
   patch: Partial<SessionRow>,
 ) {
   set((rs) => rs.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <s-stack direction="inline" gap="base">
-      <span style={{ minWidth: "12rem" }}>
-        <s-text tone="neutral">{label}</s-text>
-      </span>
-      <s-text>{value}</s-text>
-    </s-stack>
-  );
-}
-
-function Stepper({ step }: { step: number }) {
-  const labels = ["Product", "Defaults", "Sessions", "Review"];
-  return (
-    <s-stack direction="inline" gap="base">
-      {labels.map((label, i) => {
-        const n = i + 1;
-        const active = n === step;
-        const done = n < step;
-        return (
-          <s-stack key={label} direction="inline" gap="base">
-            <s-badge tone={done ? "success" : active ? "info" : undefined}>{n}</s-badge>
-            <s-text tone={active ? undefined : "neutral"}>{label}</s-text>
-          </s-stack>
-        );
-      })}
-    </s-stack>
-  );
 }

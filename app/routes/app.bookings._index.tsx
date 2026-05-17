@@ -55,7 +55,7 @@ export default function Bookings() {
         <s-section>
           <s-paragraph>
             No bookings yet. Bookings appear here as Shopify orders are placed on
-            class variants.
+            event variants.
           </s-paragraph>
         </s-section>
       ) : (
@@ -65,7 +65,7 @@ export default function Bookings() {
               <tr style={{ textAlign: "left", borderBottom: "1px solid #e1e3e5" }}>
                 <th style={th}>Order</th>
                 <th style={th}>Customer</th>
-                <th style={th}>Class</th>
+                <th style={th}>Event</th>
                 <th style={th}>Session</th>
                 <th style={th}>Qty</th>
                 <th style={th}>Payment</th>

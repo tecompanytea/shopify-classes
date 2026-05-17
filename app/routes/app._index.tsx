@@ -1,5 +1,5 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Form, useLoaderData, useRouteError } from "react-router";
+import { useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { DateTime } from "luxon";
 
@@ -14,18 +14,12 @@ type SessionSummary = {
   cancelled: boolean;
 };
 
-type DashboardDay = {
-  date: string;
-  label: string;
-  total: number;
-  cancelled: number;
-};
-
 type DashboardLoader = {
   range: {
     start: string;
     end: string;
     label: string;
+    preset: RangePreset;
   };
   stats: {
     total: number;
@@ -33,10 +27,28 @@ type DashboardLoader = {
     cancelled: number;
     rescheduled: number;
   };
-  days: DashboardDay[];
 };
 
 type SummaryIcon = "calendar" | "calendar-check" | "calendar-compare" | "calendar-time";
+type RangePreset =
+  | "today"
+  | "yesterday"
+  | "last-7-days"
+  | "last-14-days"
+  | "next-7-days"
+  | "next-14-days"
+  | "next-30-days"
+  | "custom";
+
+const RANGE_OPTIONS: { label: string; preset: Exclude<RangePreset, "custom"> }[] = [
+  { label: "Today", preset: "today" },
+  { label: "Yesterday", preset: "yesterday" },
+  { label: "Last 7 days", preset: "last-7-days" },
+  { label: "Last 14 days", preset: "last-14-days" },
+  { label: "Next 7 days", preset: "next-7-days" },
+  { label: "Next 14 days", preset: "next-14-days" },
+  { label: "Next 30 days", preset: "next-30-days" },
+];
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<DashboardLoader> => {
   const { session, admin } = await authenticate.admin(request);
@@ -45,8 +57,23 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Dashboard
   const timezone = settings.defaultTimezone;
 
   const today = DateTime.now().setZone(timezone).startOf("day");
-  let end = parseDate(url.searchParams.get("end"), timezone) ?? today;
-  let start = parseDate(url.searchParams.get("start"), timezone) ?? end.minus({ days: 7 });
+  const requestedPreset = parseRangePreset(url.searchParams.get("range"));
+  const customStart = url.searchParams.get("start");
+  const customEnd = url.searchParams.get("end");
+  const selectedRange =
+    requestedPreset != null
+      ? rangeForPreset(requestedPreset, today)
+      : customStart != null || customEnd != null
+        ? {
+            start: parseDate(customStart, timezone) ?? today.minus({ days: 7 }),
+            end: parseDate(customEnd, timezone) ?? today,
+            preset: "custom" as const,
+          }
+      : {
+          ...rangeForPreset("last-7-days", today),
+        };
+  let { start, end } = selectedRange;
+  const { preset } = selectedRange;
 
   if (start > end) {
     [start, end] = [end, start];
@@ -78,8 +105,6 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Dashboard
     const createdAt = DateTime.fromISO(booking.createdAt, { zone: timezone });
     return createdAt >= start && createdAt < rangeEndExclusive;
   });
-  const days = makeDays(start, end);
-  const dayBuckets = new Map(days.map((day) => [day.date, day]));
   const now = new Date();
 
   let total = 0;
@@ -90,8 +115,6 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Dashboard
     const quantity = booking.quantity;
     const linkedSession = sessionsByVariant.get(booking.variantId);
     const bookingCancelled = isCancelledBooking(booking, linkedSession);
-    const createdDate = DateTime.fromISO(booking.createdAt, { zone: timezone }).toISODate();
-    const day = createdDate ? dayBuckets.get(createdDate) : undefined;
 
     total += quantity;
     if (linkedSession && !linkedSession.cancelled && linkedSession.endsAt < now) {
@@ -100,12 +123,6 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Dashboard
     if (bookingCancelled) {
       cancelled += quantity;
     }
-    if (day) {
-      day.total += quantity;
-      if (bookingCancelled) {
-        day.cancelled += quantity;
-      }
-    }
   }
 
   return {
@@ -113,6 +130,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Dashboard
       start: start.toISODate()!,
       end: end.toISODate()!,
       label: `${start.toFormat("LLL d, yyyy")} - ${end.toFormat("LLL d, yyyy")}`,
+      preset,
     },
     stats: {
       total,
@@ -120,7 +138,6 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<Dashboard
       cancelled,
       rescheduled: 0,
     },
-    days,
   };
 };
 
@@ -131,57 +148,39 @@ export function ErrorBoundary() {
 }
 
 export default function Dashboard() {
-  const { range, stats, days } = useLoaderData<typeof loader>();
+  const { range, stats } = useLoaderData<typeof loader>();
 
   return (
     <s-page heading="Summary">
-      <s-section>
-        <s-stack direction="block" gap="base">
-          <s-stack direction="inline" gap="base">
-            <s-icon type="calendar" />
-            <s-heading>{range.label}</s-heading>
-          </s-stack>
-
-          <Form method="get">
-            <s-stack direction="block" gap="base">
-              <s-grid
-                gridTemplateColumns="repeat(2, minmax(0, 1fr))"
-                gap="base"
+      <s-stack direction="block" gap="base">
+        <s-box>
+          <s-button
+            icon="calendar"
+            commandFor="summary-range-menu"
+            command="--toggle"
+          >
+            {range.label}
+          </s-button>
+          <s-menu id="summary-range-menu" accessibilityLabel="Select date range">
+            {RANGE_OPTIONS.map((option) => (
+              <s-button
+                key={option.preset}
+                href={`/app?range=${option.preset}`}
+                icon={range.preset === option.preset ? "check" : undefined}
               >
-                <s-date-field label="Start" name="start" defaultValue={range.start} />
-                <s-date-field label="End" name="end" defaultValue={range.end} />
-              </s-grid>
-              <s-button type="submit">Apply date range</s-button>
-            </s-stack>
-          </Form>
-        </s-stack>
-      </s-section>
-
-      <s-grid gridTemplateColumns="repeat(4, minmax(0, 1fr))" gap="base">
-        <StatSection title="Total Bookings" value={stats.total} icon="calendar" />
-        <StatSection title="Completed Bookings" value={stats.completed} icon="calendar-check" />
-        <StatSection title="Cancelled Bookings" value={stats.cancelled} icon="calendar-compare" />
-        <StatSection title="Rescheduled Bookings" value={stats.rescheduled} icon="calendar-time" />
-      </s-grid>
-
-      <s-section heading="Booking Analytics" padding="none">
-        <s-table>
-          <s-table-header-row>
-            <s-table-header listSlot="primary">Date</s-table-header>
-            <s-table-header format="numeric">Total bookings</s-table-header>
-            <s-table-header format="numeric">Cancelled bookings</s-table-header>
-          </s-table-header-row>
-          <s-table-body>
-            {days.map((day) => (
-              <s-table-row key={day.date}>
-                <s-table-cell>{day.label}</s-table-cell>
-                <s-table-cell>{day.total}</s-table-cell>
-                <s-table-cell>{day.cancelled}</s-table-cell>
-              </s-table-row>
+                {option.label}
+              </s-button>
             ))}
-          </s-table-body>
-        </s-table>
-      </s-section>
+          </s-menu>
+        </s-box>
+
+        <s-grid gridTemplateColumns="repeat(4, minmax(0, 1fr))" gap="base">
+          <StatSection title="Total Bookings" value={stats.total} icon="calendar" />
+          <StatSection title="Completed Bookings" value={stats.completed} icon="calendar-check" />
+          <StatSection title="Cancelled Bookings" value={stats.cancelled} icon="calendar-compare" />
+          <StatSection title="Rescheduled Bookings" value={stats.rescheduled} icon="calendar-time" />
+        </s-grid>
+      </s-stack>
     </s-page>
   );
 }
@@ -208,23 +207,40 @@ function StatSection({
   );
 }
 
-function makeDays(start: DateTime, end: DateTime): DashboardDay[] {
-  const days: DashboardDay[] = [];
-  for (let cursor = start; cursor <= end; cursor = cursor.plus({ days: 1 })) {
-    days.push({
-      date: cursor.toISODate()!,
-      label: cursor.toFormat("LLL d"),
-      total: 0,
-      cancelled: 0,
-    });
-  }
-  return days;
-}
-
 function parseDate(value: string | null, timezone: string): DateTime | null {
   if (!value) return null;
   const parsed = DateTime.fromISO(value, { zone: timezone }).startOf("day");
   return parsed.isValid ? parsed : null;
+}
+
+function parseRangePreset(value: string | null): Exclude<RangePreset, "custom"> | null {
+  const preset = RANGE_OPTIONS.find((option) => option.preset === value)?.preset;
+  return preset ?? null;
+}
+
+function rangeForPreset(
+  preset: Exclude<RangePreset, "custom">,
+  today: DateTime,
+): { start: DateTime; end: DateTime; preset: Exclude<RangePreset, "custom"> } {
+  switch (preset) {
+    case "today":
+      return { start: today, end: today, preset };
+    case "yesterday": {
+      const yesterday = today.minus({ days: 1 });
+      return { start: yesterday, end: yesterday, preset };
+    }
+    case "last-14-days":
+      return { start: today.minus({ days: 14 }), end: today, preset };
+    case "next-7-days":
+      return { start: today, end: today.plus({ days: 7 }), preset };
+    case "next-14-days":
+      return { start: today, end: today.plus({ days: 14 }), preset };
+    case "next-30-days":
+      return { start: today, end: today.plus({ days: 30 }), preset };
+    case "last-7-days":
+    default:
+      return { start: today.minus({ days: 7 }), end: today, preset };
+  }
 }
 
 function isCancelledBooking(booking: BookingRow, session: SessionSummary | undefined) {

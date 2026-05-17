@@ -215,7 +215,7 @@ function DefaultsCard({
   busy: boolean;
 }) {
   return (
-    <s-section heading="Class defaults">
+    <s-section heading="Event defaults">
       <Form method="post">
         <input type="hidden" name="intent" value="update-defaults" />
         <s-stack direction="block" gap="base">
@@ -411,13 +411,13 @@ function DangerZone({ busy }: { busy: boolean }) {
   return (
     <s-section heading="Archive">
       <s-paragraph>
-        Archiving hides this class from the list. Variants in Shopify are not
+        Archiving hides this event from the list. Variants in Shopify are not
         removed — manage them in Shopify if you need to delist the product.
       </s-paragraph>
       <Form method="post">
         <input type="hidden" name="intent" value="archive-class" />
         <s-button type="submit" tone="critical" loading={busy ? true : undefined}>
-          Archive class
+          Archive event
         </s-button>
       </Form>
     </s-section>

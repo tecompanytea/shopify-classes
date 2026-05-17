@@ -18,7 +18,7 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <NavMenu>
         <Link to="/app" rel="home">Summary</Link>
-        <Link to="/app/classes">Classes</Link>
+        <Link to="/app/classes">Events</Link>
         <Link to="/app/bookings">Bookings</Link>
         <Link to="/app/locations">Locations</Link>
         <Link to="/app/settings">Settings</Link>

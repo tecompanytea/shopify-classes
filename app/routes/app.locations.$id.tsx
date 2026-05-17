@@ -207,7 +207,7 @@ export default function EditLocation() {
             </s-section>
 
             <s-section
-              heading={`Classes using this location · ${location.classProducts.length}`}
+              heading={`Events using this location · ${location.classProducts.length}`}
             >
               {location.classProducts.length === 0 ? (
                 <s-text tone="neutral">None.</s-text>

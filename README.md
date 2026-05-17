@@ -34,9 +34,37 @@ npm run setup              # prisma generate + db push
 npm run dev                # shopify app dev
 ```
 
+## Dev store preview
+
+Use the Shopify development store for fast app iteration without committing and
+waiting for Vercel:
+
+```bash
+npm run dev:store
+```
+
+This loads `.env.local`, unsets `SHOPIFY_APP_URL` so Shopify CLI can inject the
+current tunnel URL, and starts `shopify app dev` against
+`tecompany-dev.myshopify.com`.
+
+For a different development store:
+
+```bash
+npm run dev:store -- other-store.myshopify.com
+```
+
+Keep the dev preview running while editing. If Shopify Admin is stuck on an old
+tunnel URL, stop the server and run:
+
+```bash
+npx shopify app dev clean --store tecompany-dev.myshopify.com
+npm run dev:store
+```
+
 ## Scripts
 
 - `npm run dev` — Shopify CLI tunnel + Vite
+- `npm run dev:store` — load `.env.local` and preview on `tecompany-dev`
 - `npm run build` — React Router production build
 - `npm run setup` — `prisma generate && prisma db push`
 - `npm run typecheck` — RR typegen + `tsc --noEmit`

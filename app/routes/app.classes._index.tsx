@@ -66,59 +66,49 @@ export default function ClassesIndex() {
   const { rows } = useLoaderData<typeof loader>();
 
   return (
-    <s-page heading="Classes" back-href="/app">
-      <s-button slot="primary-action" href="/app/classes/new" variant="primary">
-        Create class
-      </s-button>
+    <s-page heading="Events" back-href="/app">
+      {rows.length > 0 && (
+        <s-button slot="primary-action" href="/app/classes/new" variant="primary">
+          Create event
+        </s-button>
+      )}
 
       {rows.length === 0 ? (
-        <s-section>
+        <s-section accessibilityLabel="Empty state section">
           <s-grid
-            gridTemplateColumns="repeat(12, 1fr)"
-            gap="large-300"
-            alignItems="center"
-            justifyItems="stretch"
-            inlineSize="100%"
+            gap="base"
+            justifyItems="center"
+            paddingBlock="large-400"
           >
-            <s-grid-item gridColumn="span 6">
-              <s-box inlineSize="100%" maxInlineSize="640px">
-                <s-stack direction="block" gap="base">
-                  <s-heading>Set up your first class</s-heading>
-                  <s-paragraph>
-                    Pick an existing Shopify product, add dates, capacity,
-                    location, and pricing. Customers can then view real-time
-                    class availability and check out through Shopify.
-                  </s-paragraph>
-                  <s-button href="/app/classes/new" variant="primary">
-                    Create class
-                  </s-button>
-                </s-stack>
-              </s-box>
-            </s-grid-item>
-
-            <s-grid-item gridColumn="span 6">
-              <s-box
-                accessibilityVisibility="hidden"
-                inlineSize="100%"
-                maxInlineSize="520px"
-              >
-                <s-image
-                  src="/te-classes-empty-state.jpg"
-                  alt=""
-                  accessibilityRole="presentation"
-                  aspectRatio="1427/1070"
-                  inlineSize="fill"
-                  objectFit="contain"
-                />
-              </s-box>
-            </s-grid-item>
+            <s-box maxInlineSize="280px" maxBlockSize="210px">
+              <s-image
+                src="/te-classes-empty-state.jpg"
+                alt="A teapot in front of an event calendar"
+                aspectRatio="1427/1070"
+                inlineSize="fill"
+                objectFit="contain"
+              />
+            </s-box>
+            <s-grid justifyItems="center" maxInlineSize="450px" gap="base">
+              <s-stack direction="block" alignItems="center" gap="base">
+                <s-heading>Set up your first event</s-heading>
+                <s-paragraph>
+                  Pick an existing Shopify product, add dates, capacity,
+                  location, and pricing. Customers can then view real-time
+                  event availability and check out through Shopify.
+                </s-paragraph>
+              </s-stack>
+              <s-button href="/app/classes/new" variant="primary">
+                Create event
+              </s-button>
+            </s-grid>
           </s-grid>
         </s-section>
       ) : (
-        <s-section heading={`${rows.length} class${rows.length === 1 ? "" : "es"}`} padding="none">
+        <s-section heading={`${rows.length} event${rows.length === 1 ? "" : "s"}`} padding="none">
           <s-table>
             <s-table-header-row>
-              <s-table-header listSlot="primary">Class</s-table-header>
+              <s-table-header listSlot="primary">Event</s-table-header>
               <s-table-header listSlot="inline">Status</s-table-header>
               <s-table-header>Location</s-table-header>
               <s-table-header format="numeric">Upcoming</s-table-header>

@@ -42,7 +42,7 @@ export default function Settings() {
 
   return (
     <s-page heading="Settings" back-href="/app">
-      <s-section heading="Defaults for new classes">
+      <s-section heading="Defaults for new events">
         {actionData?.ok && <s-banner tone="success">Saved.</s-banner>}
         <Form method="post">
           <s-stack direction="block" gap="base">
