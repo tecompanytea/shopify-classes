@@ -43,28 +43,31 @@ waiting for Vercel:
 npm run dev:store
 ```
 
-This loads `.env.local`, unsets `SHOPIFY_APP_URL` so Shopify CLI can inject the
-current tunnel URL, and starts `shopify app dev` against
-`tecompany-dev.myshopify.com`.
+This cleans any stale Shopify dev preview, loads `.env.local`, unsets
+`SHOPIFY_APP_URL` so Shopify CLI can inject the current tunnel URL, and starts
+`shopify app dev` against `tecompany-dev.myshopify.com`.
 
-For a different development store:
-
-```bash
-npm run dev:store -- other-store.myshopify.com
-```
-
-Keep the dev preview running while editing. If Shopify Admin is stuck on an old
-tunnel URL, stop the server and run:
+If Shopify Admin is stuck on an old `trycloudflare.com` URL, stop the server and
+run the same command again:
 
 ```bash
-npx shopify app dev clean --store tecompany-dev.myshopify.com
 npm run dev:store
 ```
+
+If Cloudflare tunnel DNS is unreliable, use localhost mode instead:
+
+```bash
+npm run dev:store:localhost
+```
+
+The localhost option may ask to generate a local HTTPS certificate the first
+time it runs.
 
 ## Scripts
 
 - `npm run dev` — Shopify CLI tunnel + Vite
-- `npm run dev:store` — load `.env.local` and preview on `tecompany-dev`
+- `npm run dev:store` — clean stale previews, load `.env.local`, and preview on `tecompany-dev`
+- `npm run dev:store:localhost` — same dev store, using Shopify localhost mode
 - `npm run build` — React Router production build
 - `npm run setup` — `prisma generate && prisma db push`
 - `npm run typecheck` — RR typegen + `tsc --noEmit`

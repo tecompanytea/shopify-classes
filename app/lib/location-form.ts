@@ -12,7 +12,6 @@ export type LocationFormValues = {
   postalCode: string;
   timezone: string;
   status: LocationStatus;
-  bookingNotificationEmails: string;
 };
 
 export type PersistedLocationFormValues = {
@@ -25,7 +24,6 @@ export type PersistedLocationFormValues = {
   postalCode: string | null;
   timezone: string;
   archived: boolean;
-  bookingNotificationEmails?: string | null;
 };
 
 export const defaultLocationFormValues: LocationFormValues = {
@@ -38,7 +36,6 @@ export const defaultLocationFormValues: LocationFormValues = {
   postalCode: "",
   timezone: CLASS_TIMEZONE,
   status: "enabled",
-  bookingNotificationEmails: "",
 };
 
 export const COUNTRY_OPTIONS = [
@@ -67,7 +64,6 @@ export function readLocationFormValues(form: FormData): LocationFormValues {
     postalCode: field(form, "postalCode"),
     timezone: CLASS_TIMEZONE,
     status: status === "disabled" ? "disabled" : "enabled",
-    bookingNotificationEmails: field(form, "bookingNotificationEmails"),
   };
 }
 
@@ -84,7 +80,6 @@ export function locationToFormValues(
     postalCode: location.postalCode ?? "",
     timezone: CLASS_TIMEZONE,
     status: location.archived ? "disabled" : "enabled",
-    bookingNotificationEmails: location.bookingNotificationEmails ?? "",
   };
 }
 
@@ -92,26 +87,6 @@ export function nullable(value: string): string | null {
   return value ? value : null;
 }
 
-export function normalizeEmailList(value: string): string | null {
-  const emails = splitEmailList(value);
-  return emails.length ? emails.join(", ") : null;
-}
-
-export function findInvalidEmail(value: string): string | null {
-  return (
-    splitEmailList(value).find(
-      (email) => !/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email),
-    ) ?? null
-  );
-}
-
 function field(form: FormData, name: keyof LocationFormValues): string {
   return String(form.get(name) ?? "").trim();
-}
-
-function splitEmailList(value: string): string[] {
-  return value
-    .split(",")
-    .map((email) => email.trim())
-    .filter(Boolean);
 }

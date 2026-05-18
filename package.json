@@ -5,6 +5,7 @@
     "build": "react-router build",
     "dev": "shopify app dev",
     "dev:store": "bash scripts/dev-store.sh",
+    "dev:store:localhost": "bash scripts/dev-store.sh --localhost",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",

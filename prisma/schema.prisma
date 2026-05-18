@@ -59,7 +59,6 @@ model Location {
   postalCode  String?
   country     String?
   timezone    String   @default("America/New_York")
-  bookingNotificationEmails String?
   archived    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
