@@ -12,10 +12,6 @@ type LocationRow = {
   eventCount: number;
 };
 
-function formatAddress(parts: Array<string | null>): string {
-  return parts.filter(Boolean).join(", ") || "-";
-}
-
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const locations = await db.location.findMany({
@@ -31,14 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const rows: LocationRow[] = locations.map((location) => ({
     id: location.id,
     name: location.name,
-    address: formatAddress([
-      location.addressLine1,
-      location.addressLine2,
-      location.city,
-      location.region,
-      location.postalCode,
-      location.country,
-    ]),
+    address: location.addressLine1 ?? "-",
     eventCount: location._count.classProducts,
   }));
 
@@ -97,12 +86,12 @@ export default function LocationsIndex() {
                 return (
                   <s-table-row key={row.id} clickDelegate={locationLinkId}>
                     <s-table-cell>
+                      <s-text>{row.name}</s-text>
                       <s-link
                         id={locationLinkId}
                         href={`/app/locations/${row.id}`}
-                      >
-                        {row.name}
-                      </s-link>
+                        accessibilityLabel={`View ${row.name}`}
+                      />
                     </s-table-cell>
                     <s-table-cell>{row.address}</s-table-cell>
                     <s-table-cell>

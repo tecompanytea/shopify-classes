@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import {
   useLoaderData,
@@ -89,6 +90,7 @@ export default function Bookings() {
   const { scope, rows } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const navigation = useNavigation();
+  const [query, setQuery] = useState("");
 
   // Reflect the target scope immediately while the loader is in flight so the
   // button/choice-list don't snap back to the stale value during navigation.
@@ -98,58 +100,88 @@ export default function Bookings() {
   const activeScope = pendingScope ?? scope;
   const activeLabel = SCOPE_OPTIONS.find((o) => o.scope === activeScope)!.label;
 
+  const q = query.trim().toLowerCase();
+  const visibleRows = q
+    ? rows.filter((r) =>
+        [r.classTitle, r.customerName, r.email, r.orderName].some((v) =>
+          v?.toLowerCase().includes(q),
+        ),
+      )
+    : rows;
+
+  const scopeButton = (
+    <s-button
+      variant="secondary"
+      icon="calendar"
+      accessibilityLabel="Filter by class date"
+      commandFor="bookings-scope-popover"
+    >
+      {activeLabel}
+    </s-button>
+  );
+  const scopePopover = (
+    <s-popover id="bookings-scope-popover">
+      <s-box paddingBlock="small-200" paddingInline="base">
+        <s-choice-list
+          label="Show classes"
+          name="bookings-scope"
+          labelAccessibilityVisibility="exclusive"
+          values={[activeScope]}
+          onChange={(event) => {
+            const next = event.currentTarget.values[0];
+            if (next && next !== activeScope) navigate(`/app?scope=${next}`);
+          }}
+        >
+          {SCOPE_OPTIONS.map((option) => (
+            <s-choice key={option.scope} value={option.scope}>
+              {option.label}
+            </s-choice>
+          ))}
+        </s-choice-list>
+      </s-box>
+    </s-popover>
+  );
+
   return (
     <s-page heading="Bookings">
-      <s-button
-        variant="secondary"
-        icon="calendar"
-        accessibilityLabel="Filter by class date"
-        commandFor="bookings-scope-popover"
-      >
-        {activeLabel}
-      </s-button>
-      <s-popover id="bookings-scope-popover">
-        <s-box paddingBlock="small-200" paddingInline="base">
-          <s-choice-list
-            label="Show classes"
-            name="bookings-scope"
-            labelAccessibilityVisibility="exclusive"
-            values={[activeScope]}
-            onChange={(event) => {
-              const next = event.currentTarget.values[0];
-              if (next && next !== activeScope) navigate(`/app?scope=${next}`);
-            }}
-          >
-            {SCOPE_OPTIONS.map((option) => (
-              <s-choice key={option.scope} value={option.scope}>
-                {option.label}
-              </s-choice>
-            ))}
-          </s-choice-list>
-        </s-box>
-      </s-popover>
-
       {rows.length === 0 ? (
         <s-section>
-          <s-paragraph>{emptyMessage(activeScope)}</s-paragraph>
+          {scopeButton}
+          {scopePopover}
+          <s-box paddingBlockStart="base">
+            <s-paragraph>{emptyMessage(activeScope)}</s-paragraph>
+          </s-box>
         </s-section>
       ) : (
         <s-section padding="none">
-          <s-box padding="base">
-            <s-heading>
-              {`${rows.length} booking${rows.length === 1 ? "" : "s"}`}
-            </s-heading>
-          </s-box>
           <s-table>
+            <s-grid
+              slot="filters"
+              gridTemplateColumns="1fr auto"
+              gap="small-200"
+              alignItems="end"
+            >
+              <s-search-field
+                label="Search bookings"
+                labelAccessibilityVisibility="exclusive"
+                placeholder="Search by class, customer, or order"
+                value={query}
+                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+              />
+              {scopeButton}
+              {scopePopover}
+            </s-grid>
             <s-table-header-row>
               <s-table-header listSlot="primary">Class</s-table-header>
-              <s-table-header>Class date</s-table-header>
-              <s-table-header>Order</s-table-header>
-              <s-table-header>Customer</s-table-header>
-              <s-table-header listSlot="secondary">Status</s-table-header>
+              <s-table-header listSlot="labeled">Class date</s-table-header>
+              <s-table-header listSlot="labeled">Order</s-table-header>
+              <s-table-header listSlot="secondary">Customer</s-table-header>
+              <s-table-header format="numeric" listSlot="labeled">Seats</s-table-header>
+              <s-table-header listSlot="labeled">Payment status</s-table-header>
+              <s-table-header listSlot="labeled">Fulfillment status</s-table-header>
             </s-table-header-row>
             <s-table-body>
-              {rows.map((r) => (
+              {visibleRows.map((r) => (
                 <s-table-row key={`${r.orderId}-${r.variantId}`}>
                   <s-table-cell>{r.classTitle}</s-table-cell>
                   <s-table-cell>
@@ -164,22 +196,24 @@ export default function Bookings() {
                     </s-link>
                   </s-table-cell>
                   <s-table-cell>{r.customerName ?? r.email ?? "—"}</s-table-cell>
+                  <s-table-cell>{r.quantity}</s-table-cell>
                   <s-table-cell>
-                    <s-stack direction="inline" gap="small-200">
-                      {r.financialStatus ? (
-                        <s-badge tone={paymentTone(r.financialStatus)}>
-                          {titleCase(r.financialStatus)}
-                        </s-badge>
-                      ) : null}
-                      {r.fulfillmentStatus ? (
-                        <s-badge tone={fulfillmentTone(r.fulfillmentStatus)}>
-                          {titleCase(r.fulfillmentStatus)}
-                        </s-badge>
-                      ) : null}
-                      {!r.financialStatus && !r.fulfillmentStatus ? (
-                        <s-text>—</s-text>
-                      ) : null}
-                    </s-stack>
+                    {r.financialStatus ? (
+                      <s-badge tone={paymentTone(r.financialStatus)}>
+                        {titleCase(r.financialStatus)}
+                      </s-badge>
+                    ) : (
+                      "—"
+                    )}
+                  </s-table-cell>
+                  <s-table-cell>
+                    {r.fulfillmentStatus ? (
+                      <s-badge tone={fulfillmentTone(r.fulfillmentStatus)}>
+                        {titleCase(r.fulfillmentStatus)}
+                      </s-badge>
+                    ) : (
+                      "—"
+                    )}
                   </s-table-cell>
                 </s-table-row>
               ))}

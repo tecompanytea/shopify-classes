@@ -105,18 +105,13 @@ export default function ClassesIndex() {
         </s-section>
       ) : (
         <s-section padding="none">
-          <s-box padding="base">
-            <s-heading>
-              {`${rows.length} event${rows.length === 1 ? "" : "s"}`}
-            </s-heading>
-          </s-box>
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">Event</s-table-header>
               <s-table-header listSlot="inline">Status</s-table-header>
-              <s-table-header>Location</s-table-header>
-              <s-table-header format="numeric">Upcoming</s-table-header>
-              <s-table-header listSlot="secondary">Next session</s-table-header>
+              <s-table-header listSlot="secondary">Location</s-table-header>
+              <s-table-header format="numeric" listSlot="labeled">Upcoming</s-table-header>
+              <s-table-header listSlot="labeled">Next session</s-table-header>
             </s-table-header-row>
             <s-table-body>
               {rows.map((row) => {

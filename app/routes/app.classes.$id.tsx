@@ -196,8 +196,10 @@ export default function ClassDetail() {
         <s-banner tone="critical">{actionData.error}</s-banner>
       )}
 
+      <SessionsCard classProduct={classProduct} />
+      <AddSessionsCard shopifyLocations={shopifyLocations} busy={busy} />
+
       <DefaultsCard classProduct={classProduct} locations={locations} busy={busy} />
-      <SessionsCard classProduct={classProduct} shopifyLocations={shopifyLocations} busy={busy} />
       <DangerZone busy={busy} />
     </s-page>
   );
@@ -215,7 +217,7 @@ function DefaultsCard({
   busy: boolean;
 }) {
   return (
-    <s-section heading="Event defaults">
+    <s-section slot="aside" heading="Event defaults">
       <Form method="post">
         <input type="hidden" name="intent" value="update-defaults" />
         <s-stack direction="block" gap="base">
@@ -245,12 +247,72 @@ function DefaultsCard({
   );
 }
 
-function SessionsCard({
-  classProduct,
+function SessionsCard({ classProduct }: { classProduct: ClassProductWith }) {
+  const now = new Date();
+  const sessions = [...classProduct.sessions].sort(
+    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+  );
+
+  return (
+    <s-section heading={`Sessions · ${classProduct.sessions.length}`}>
+      {sessions.length === 0 ? (
+        <s-text tone="neutral">No sessions yet. Add dates below.</s-text>
+      ) : (
+        <s-table>
+          <s-table-header-row>
+            <s-table-header listSlot="primary">Date</s-table-header>
+            <s-table-header listSlot="inline">Status</s-table-header>
+            <s-table-header format="numeric" listSlot="labeled">Seats</s-table-header>
+            <s-table-header listSlot="labeled">SKU</s-table-header>
+            <s-table-header></s-table-header>
+          </s-table-header-row>
+          <s-table-body>
+            {sessions.map((s) => {
+              const iso =
+                typeof s.startsAt === "string" ? s.startsAt : s.startsAt.toISOString();
+              const title = formatSessionTitle(iso, CLASS_TIMEZONE);
+              const upcoming = !s.cancelled && new Date(iso) > now;
+              return (
+                <s-table-row key={s.id}>
+                  <s-table-cell>{title}</s-table-cell>
+                  <s-table-cell>
+                    {s.cancelled ? (
+                      <s-badge tone="critical">Cancelled</s-badge>
+                    ) : upcoming ? (
+                      <s-badge tone="success">Upcoming</s-badge>
+                    ) : (
+                      <s-badge>Past</s-badge>
+                    )}
+                  </s-table-cell>
+                  <s-table-cell>{s.capacity}</s-table-cell>
+                  <s-table-cell>{s.sku}</s-table-cell>
+                  <s-table-cell>
+                    <Form method="post">
+                      <input type="hidden" name="intent" value="remove-session" />
+                      <input type="hidden" name="sessionId" value={s.id} />
+                      <s-button
+                        type="submit"
+                        tone="critical"
+                        variant="tertiary"
+                        icon="delete"
+                        accessibilityLabel={`Remove ${title}`}
+                      />
+                    </Form>
+                  </s-table-cell>
+                </s-table-row>
+              );
+            })}
+          </s-table-body>
+        </s-table>
+      )}
+    </s-section>
+  );
+}
+
+function AddSessionsCard({
   shopifyLocations,
   busy,
 }: {
-  classProduct: ClassProductWith;
   shopifyLocations: { id: string; name: string }[];
   busy: boolean;
 }) {
@@ -272,28 +334,9 @@ function SessionsCard({
     [draftRows],
   );
 
-  const upcoming = classProduct.sessions.filter((s) => !s.cancelled && new Date(s.startsAt) > new Date());
-  const past = classProduct.sessions.filter((s) => s.cancelled || new Date(s.startsAt) <= new Date());
-
   return (
-    <s-section heading={`Sessions · ${classProduct.sessions.length}`}>
+    <s-section heading="Add sessions">
       <s-stack direction="block" gap="base">
-        <s-heading>Upcoming</s-heading>
-        {upcoming.length === 0 && <s-text tone="neutral">No upcoming sessions.</s-text>}
-        {upcoming.map((s) => (
-          <SessionRow key={s.id} session={s} />
-        ))}
-
-        <s-heading>{`Past / cancelled · ${past.length}`}</s-heading>
-        <s-stack direction="block" gap="base">
-          {past.map((s) => (
-            <SessionRow key={s.id} session={s} />
-          ))}
-        </s-stack>
-
-        <s-divider />
-
-        <s-heading>Add sessions</s-heading>
         <s-select
           label="Shopify inventory location"
           value={shopifyLocationGid}
@@ -326,6 +369,8 @@ function SessionsCard({
               }
             />
             <s-button
+              variant="tertiary"
+              tone="critical"
               onClick={() => setDraftRows((rs) => rs.filter((_, i) => i !== idx))}
               disabled={draftRows.length === 1}
             >
@@ -358,43 +403,9 @@ function SessionsCard({
   );
 }
 
-function SessionRow({
-  session,
-}: {
-  session: {
-    id: string;
-    sku: string;
-    startsAt: string | Date;
-    capacity: number;
-    cancelled: boolean;
-    variantGid: string;
-  };
-}) {
-  const iso = typeof session.startsAt === "string" ? session.startsAt : session.startsAt.toISOString();
-  const title = formatSessionTitle(iso, CLASS_TIMEZONE);
-  return (
-    <s-stack direction="inline" gap="base">
-      {session.cancelled ? (
-        <s-text tone="neutral">{title}</s-text>
-      ) : (
-        <s-text type="strong">{title}</s-text>
-      )}
-      <s-text tone="neutral">{session.capacity} seats</s-text>
-      <s-text tone="neutral">{session.sku}</s-text>
-      <Form method="post">
-        <input type="hidden" name="intent" value="remove-session" />
-        <input type="hidden" name="sessionId" value={session.id} />
-        <s-button type="submit" tone="critical" variant="tertiary">
-          Remove
-        </s-button>
-      </Form>
-    </s-stack>
-  );
-}
-
 function DangerZone({ busy }: { busy: boolean }) {
   return (
-    <s-section heading="Archive">
+    <s-section slot="aside" heading="Archive">
       <s-paragraph>
         Archiving hides this event from the list. Variants in Shopify are not
         removed — manage them in Shopify if you need to delist the product.
