@@ -275,7 +275,10 @@ export default function Bookings() {
                   <s-table-cell>{r.locationName ?? "—"}</s-table-cell>
                   <s-table-cell>
                     {r.fulfillmentStatus ? (
-                      <s-badge tone={fulfillmentTone(r.fulfillmentStatus)}>
+                      <s-badge
+                        tone={fulfillmentTone(r.fulfillmentStatus)}
+                        icon={fulfillmentIcon(r.fulfillmentStatus)}
+                      >
                         {titleCase(r.fulfillmentStatus)}
                       </s-badge>
                     ) : (
@@ -314,20 +317,40 @@ function titleCase(status: string): string {
 
 type BadgeTone = "success" | "info" | "warning" | "critical" | "caution" | "neutral";
 
-function fulfillmentTone(status: string): BadgeTone {
+// Fulfilled = done → no tone, just the icon. On hold is the problem state (warning);
+// everything else still "to do" gets the softer caution.
+function fulfillmentTone(status: string): BadgeTone | undefined {
   switch (status) {
     case "FULFILLED":
-      return "success";
+      return undefined;
+    case "ON_HOLD":
+      return "warning";
+    case "UNFULFILLED":
     case "PARTIALLY_FULFILLED":
     case "IN_PROGRESS":
     case "SCHEDULED":
     case "OPEN":
-      return "warning";
-    case "ON_HOLD":
       return "caution";
     case "RESTOCKED":
       return "info";
     default:
       return "neutral";
+  }
+}
+
+// enabled = done; incomplete = not done yet (including on hold).
+function fulfillmentIcon(status: string): "" | "enabled" | "incomplete" {
+  switch (status) {
+    case "FULFILLED":
+      return "enabled";
+    case "UNFULFILLED":
+    case "PARTIALLY_FULFILLED":
+    case "IN_PROGRESS":
+    case "SCHEDULED":
+    case "OPEN":
+    case "ON_HOLD":
+      return "incomplete";
+    default:
+      return "";
   }
 }
