@@ -44,12 +44,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const form = await request.formData();
   const intent = String(form.get("intent"));
 
-  if (intent === "archive") {
-    const archived = await db.location.updateMany({
-      where: { id: String(params.id), shop: session.shop },
-      data: { archived: true },
+  if (intent === "delete") {
+    // Guard: never delete a location that events still reference.
+    const inUse = await db.classProduct.count({
+      where: { shop: session.shop, locationId: String(params.id) },
     });
-    if (archived.count === 0) throw new Response("Not found", { status: 404 });
+    if (inUse > 0) {
+      return {
+        error: `Can't delete: ${inUse} event${inUse === 1 ? "" : "s"} still use this location. Reassign or remove them first.`,
+      };
+    }
+    const deleted = await db.location.deleteMany({
+      where: { id: String(params.id), shop: session.shop },
+    });
+    if (deleted.count === 0) throw new Response("Not found", { status: 404 });
     return redirect("/app/locations");
   }
 
@@ -152,11 +160,12 @@ export default function EditLocation() {
           Duplicate
         </s-button>
         <s-button
-          icon="archive"
+          icon="delete"
           tone="critical"
-          onClick={() => submitFormById(deleteFormId)}
+          commandFor="delete-location-modal"
+          command="--show"
         >
-          Archive
+          Delete location
         </s-button>
       </s-menu>
 
@@ -226,6 +235,7 @@ export default function EditLocation() {
       <s-section slot="aside" heading="Status">
         <s-select
           label="Status"
+          labelAccessibilityVisibility="exclusive"
           value={status}
           onChange={(e) =>
             setStatus(
@@ -245,8 +255,33 @@ export default function EditLocation() {
       </Form>
 
       <Form id={deleteFormId} method="post">
-        <input type="hidden" name="intent" value="archive" />
+        <input type="hidden" name="intent" value="delete" />
       </Form>
+
+      <s-modal id="delete-location-modal" heading="Delete location?">
+        <s-stack gap="base">
+          <s-text>
+            Permanently delete {location.name}? This cannot be undone.
+          </s-text>
+        </s-stack>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          tone="critical"
+          commandFor="delete-location-modal"
+          command="--hide"
+          onClick={() => submitFormById(deleteFormId)}
+        >
+          Delete location
+        </s-button>
+        <s-button
+          slot="secondary-actions"
+          commandFor="delete-location-modal"
+          command="--hide"
+        >
+          Cancel
+        </s-button>
+      </s-modal>
     </s-page>
   );
 }

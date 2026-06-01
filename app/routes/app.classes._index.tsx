@@ -104,7 +104,12 @@ export default function ClassesIndex() {
           </s-grid>
         </s-section>
       ) : (
-        <s-section heading={`${rows.length} event${rows.length === 1 ? "" : "s"}`} padding="none">
+        <s-section padding="none">
+          <s-box padding="base">
+            <s-heading>
+              {`${rows.length} event${rows.length === 1 ? "" : "s"}`}
+            </s-heading>
+          </s-box>
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">Event</s-table-header>

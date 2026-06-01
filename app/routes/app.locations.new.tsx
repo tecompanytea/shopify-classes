@@ -198,6 +198,7 @@ export default function NewLocation() {
       <s-section slot="aside" heading="Status">
         <s-select
           label="Status"
+          labelAccessibilityVisibility="exclusive"
           value={status}
           onChange={(e) =>
             setStatus(

@@ -57,7 +57,7 @@ export default function LocationsIndex() {
   return (
     <s-page heading="Locations" back-href="/app">
       <s-button slot="primary-action" href="/app/locations/new">
-        Create location
+        Add location
       </s-button>
 
       {rows.length === 0 ? (
@@ -76,20 +76,19 @@ export default function LocationsIndex() {
               inventory locations.
             </s-paragraph>
             <s-button href="/app/locations/new" variant="primary">
-              Create location
+              Add location
             </s-button>
           </s-stack>
         </s-section>
       ) : (
-        <s-section
-          heading={`${rows.length} location${rows.length === 1 ? "" : "s"}`}
-          padding="none"
-        >
+        <s-section padding="none">
           <s-table>
             <s-table-header-row>
               <s-table-header listSlot="primary">Location</s-table-header>
-              <s-table-header>Address</s-table-header>
-              <s-table-header format="numeric">Events</s-table-header>
+              <s-table-header listSlot="secondary">Address</s-table-header>
+              <s-table-header listSlot="labeled">
+                <s-stack alignItems="center">Events</s-stack>
+              </s-table-header>
             </s-table-header-row>
             <s-table-body>
               {rows.map((row) => {
@@ -106,7 +105,9 @@ export default function LocationsIndex() {
                       </s-link>
                     </s-table-cell>
                     <s-table-cell>{row.address}</s-table-cell>
-                    <s-table-cell>{row.eventCount}</s-table-cell>
+                    <s-table-cell>
+                      <s-stack alignItems="center">{row.eventCount}</s-stack>
+                    </s-table-cell>
                   </s-table-row>
                 );
               })}
