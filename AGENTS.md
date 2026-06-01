@@ -20,6 +20,18 @@ This app is a Shopify embedded admin app built with React Router v7 + Prisma. **
 
 ---
 
+## Tooling — Shopify AI Toolkit (use it)
+
+This repo enables the **`shopify-ai-toolkit@claude-plugins-official`** Claude Code plugin (committed in `.claude/settings.json`). Its `shopify-*` skills are the **preferred way to satisfy Rule 2** — they return current, authoritative Shopify docs and validate markup, rather than relying on training data:
+
+- **`shopify-polaris-app-home`** — for any `s-*` web-component work. Run `scripts/search_docs.mjs "<component>"` for the live component reference and `scripts/validate.mjs` to check markup **before** writing `s-*` JSX.
+- **`shopify-admin`** — Admin GraphQL queries/mutations.
+- **`shopify-custom-data`** (metafields/metaobjects), **`shopify-functions`**, **`shopify-app-store-review`**, **`shopify-liquid`**, and others as relevant.
+
+If the plugin isn't active in your Claude Code session, enable it with `/plugin` (it's a built-in marketplace — no extra setup). Non-interactive/agent sessions may need it pre-approved on the machine; if you can't enable it, fall back to fetching the `shopify.dev` docs directly per Rule 2. Non-Claude-Code tools (Cursor, Copilot): fetch the docs directly.
+
+---
+
 ## Verified component reference
 
 The facts below come from the official component docs (admin-extensions `2026-01`) and the project's installed `@shopify/polaris-types`. Re-verify against the live docs before relying on these — types and docs can drift between versions.
@@ -159,5 +171,6 @@ If the docs genuinely don't cover what the user is asking for, **say so** and pr
 
 ## Related files
 
+- `.claude/settings.json` — committed project settings; enables the `shopify-ai-toolkit` plugin for everyone.
 - `CLAUDE.md` — Claude Code project context (if present).
 - `.claude/projects/.../memory/MEMORY.md` — agent memory index (Claude Code only).
