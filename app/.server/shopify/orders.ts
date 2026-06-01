@@ -5,7 +5,10 @@ export type BookingRow = {
   orderName: string;
   createdAt: string;
   email: string | null;
+  customerId: string | null;
   customerName: string | null;
+  customerOrdersCount: number | null;
+  customerLocation: string | null;
   financialStatus: string | null;
   fulfillmentStatus: string | null;
   variantId: string;
@@ -37,7 +40,12 @@ export async function listBookingsForVariants(
             email
             displayFinancialStatus
             displayFulfillmentStatus
-            customer { displayName }
+            customer {
+              id
+              displayName
+              numberOfOrders
+              defaultAddress { city provinceCode country }
+            }
             lineItems(first: 50) {
               nodes {
                 quantity
@@ -61,6 +69,13 @@ export async function listBookingsForVariants(
   const rows: BookingRow[] = [];
 
   for (const order of orders) {
+    const customer = order.customer ?? null;
+    const addr = customer?.defaultAddress;
+    const cityProvince = [addr?.city, addr?.provinceCode].filter(Boolean).join(" ");
+    const customerLocation =
+      [cityProvince, addr?.country].filter(Boolean).join(", ") || null;
+    const customerOrdersCount =
+      customer?.numberOfOrders != null ? Number(customer.numberOfOrders) : null;
     for (const li of order.lineItems?.nodes ?? []) {
       if (!li.variant) continue;
       if (!variantSet.has(li.variant.id)) continue;
@@ -69,7 +84,10 @@ export async function listBookingsForVariants(
         orderName: order.name,
         createdAt: order.createdAt,
         email: order.email ?? null,
-        customerName: order.customer?.displayName ?? null,
+        customerId: customer?.id ?? null,
+        customerName: customer?.displayName ?? null,
+        customerOrdersCount,
+        customerLocation,
         financialStatus: order.displayFinancialStatus ?? null,
         fulfillmentStatus: order.displayFulfillmentStatus ?? null,
         variantId: li.variant.id,

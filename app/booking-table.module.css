@@ -1,0 +1,71 @@
+/* Order-number cell: regular text color (not link-blue) that underlines on
+   hover, like the native admin orders index. We can't get this from s-link
+   (forces blue) or s-clickable (forces a grey hover box) — both bake their
+   hover into a shadow root — so we style a plain element and delegate the
+   click to a visually hidden s-link that performs the shopify:// navigation. */
+.orderNumber {
+  cursor: pointer;
+  display: inline-block;
+  font-weight: 600;
+}
+
+.orderNumber:hover {
+  text-decoration: underline;
+}
+
+/* Custom popover trigger: a plain button styled as inline text (name + chevron
+   as one unit), so there's no s-clickable grey hover. It opens the popover via
+   the native command/commandfor invoker API — the same mechanism Polaris's
+   commandFor uses. inline-flex + nowrap keeps the name and chevron on one line. */
+.customerActivator {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.customerName {
+  font-weight: 600;
+}
+
+/* Underline the name on hover, and keep it underlined while the popover is open
+   (the .open class is toggled from the popover's onShow/onHide). */
+.customerActivator:hover .customerName,
+.customerActivator.open .customerName {
+  text-decoration: underline;
+}
+
+/* Chevron hidden until hover; visibility keeps its space so nothing shifts. */
+.customerActivator s-icon {
+  visibility: hidden;
+}
+
+.customerActivator:hover s-icon {
+  visibility: visible;
+}
+
+/* Slightly larger body lines in the popover (address, order count, email) —
+   the bold name and the button keep their own sizes. Spacing stays default. */
+.popoverLine {
+  font-size: 1.09375em;
+}
+
+/* Visually hidden but still rendered, clickable, and focusable. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -20,3 +20,11 @@ export function formatSessionTitle(startsAtIso: string, timezone: string): strin
     "ccc LLL d, yyyy 'at' h:mm a",
   );
 }
+
+// Compact, year-less class date for the bookings table.
+// Example: "Saturday Jun 6, at 3:00 PM".
+export function formatBookingDate(startsAtIso: string, timezone: string): string {
+  return DateTime.fromISO(startsAtIso, { zone: timezone }).toFormat(
+    "cccc LLL d, 'at' h:mm a",
+  );
+}

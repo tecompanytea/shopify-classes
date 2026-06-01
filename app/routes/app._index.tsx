@@ -12,7 +12,8 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { listBookingsForVariants, type BookingRow } from "../.server/shopify/orders";
 import { CLASS_TIMEZONE } from "../lib/class-config";
-import { formatSessionTitle } from "../lib/sku";
+import { formatBookingDate } from "../lib/sku";
+import styles from "../booking-table.module.css";
 
 type Scope = "upcoming" | "past" | "all";
 
@@ -26,6 +27,7 @@ const DEFAULT_SCOPE: Scope = "upcoming";
 
 type BookingTableRow = BookingRow & {
   classTitle: string;
+  locationName: string | null;
   sessionStartsAt: string;
 };
 
@@ -48,7 +50,11 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       cancelled: false,
       ...(startsAtFilter ? { startsAt: startsAtFilter } : {}),
     },
-    include: { classProduct: { select: { title: true } } },
+    include: {
+      classProduct: {
+        select: { title: true, location: { select: { name: true } } },
+      },
+    },
   });
 
   if (sessions.length === 0) return { scope, rows: [] };
@@ -65,6 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
     rows.push({
       ...b,
       classTitle: s.classProduct.title,
+      locationName: s.classProduct.location?.name ?? null,
       sessionStartsAt: s.startsAt.toISOString(),
     });
   }
@@ -91,6 +98,7 @@ export default function Bookings() {
   const navigate = useNavigate();
   const navigation = useNavigation();
   const [query, setQuery] = useState("");
+  const [openCustomer, setOpenCustomer] = useState<number | null>(null);
 
   // Reflect the target scope immediately while the loader is in flight so the
   // button/choice-list don't snap back to the stale value during navigation.
@@ -144,68 +152,127 @@ export default function Bookings() {
 
   return (
     <s-page heading="Bookings">
+      <s-box paddingBlockEnd="base">
+        {scopeButton}
+        {scopePopover}
+      </s-box>
       {rows.length === 0 ? (
         <s-section>
-          {scopeButton}
-          {scopePopover}
-          <s-box paddingBlockStart="base">
-            <s-paragraph>{emptyMessage(activeScope)}</s-paragraph>
-          </s-box>
+          <s-paragraph>{emptyMessage(activeScope)}</s-paragraph>
         </s-section>
       ) : (
         <s-section padding="none">
           <s-table>
-            <s-grid
+            <s-search-field
               slot="filters"
-              gridTemplateColumns="1fr auto"
-              gap="small-200"
-              alignItems="end"
-            >
-              <s-search-field
-                label="Search bookings"
-                labelAccessibilityVisibility="exclusive"
-                placeholder="Search by class, customer, or order"
-                value={query}
-                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-              />
-              {scopeButton}
-              {scopePopover}
-            </s-grid>
+              label="Search bookings"
+              labelAccessibilityVisibility="exclusive"
+              placeholder="Search by class, customer, or order"
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
             <s-table-header-row>
               <s-table-header listSlot="primary">Class</s-table-header>
               <s-table-header listSlot="labeled">Class date</s-table-header>
               <s-table-header listSlot="labeled">Order</s-table-header>
               <s-table-header listSlot="secondary">Customer</s-table-header>
               <s-table-header format="numeric" listSlot="labeled">Seats</s-table-header>
-              <s-table-header listSlot="labeled">Payment status</s-table-header>
+              <s-table-header listSlot="labeled">Location</s-table-header>
               <s-table-header listSlot="labeled">Fulfillment status</s-table-header>
             </s-table-header-row>
             <s-table-body>
-              {visibleRows.map((r) => (
+              {visibleRows.map((r, i) => (
                 <s-table-row key={`${r.orderId}-${r.variantId}`}>
                   <s-table-cell>{r.classTitle}</s-table-cell>
                   <s-table-cell>
-                    {formatSessionTitle(r.sessionStartsAt, CLASS_TIMEZONE)}
+                    {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
                   </s-table-cell>
                   <s-table-cell>
-                    <s-link
-                      href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
-                      target="_top"
+                    <div
+                      className={styles.orderNumber}
+                      onClick={() =>
+                        document.getElementById(`order-link-${i}`)?.click()
+                      }
                     >
                       {r.orderName}
-                    </s-link>
+                    </div>
+                    <span className={styles.srOnly}>
+                      <s-link
+                        id={`order-link-${i}`}
+                        href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
+                        target="_top"
+                      >
+                        {`Open order ${r.orderName}`}
+                      </s-link>
+                    </span>
                   </s-table-cell>
-                  <s-table-cell>{r.customerName ?? r.email ?? "—"}</s-table-cell>
-                  <s-table-cell>{r.quantity}</s-table-cell>
                   <s-table-cell>
-                    {r.financialStatus ? (
-                      <s-badge tone={paymentTone(r.financialStatus)}>
-                        {titleCase(r.financialStatus)}
-                      </s-badge>
+                    {r.customerId ? (
+                      <>
+                        <button
+                          type="button"
+                          className={`${styles.customerActivator}${
+                            openCustomer === i ? ` ${styles.open}` : ""
+                          }`}
+                          {...({
+                            commandfor: `customer-${i}`,
+                            command: "--toggle",
+                          } as Record<string, string>)}
+                        >
+                          <span className={styles.customerName}>
+                            {r.customerName ?? r.email ?? "View customer"}
+                          </span>
+                          <s-icon type="caret-down" size="base" color="base" />
+                        </button>
+                        <s-popover
+                          id={`customer-${i}`}
+                          minInlineSize="250px"
+                          onShow={() => setOpenCustomer(i)}
+                          onHide={() => setOpenCustomer(null)}
+                        >
+                          <s-box padding="small">
+                            <s-stack direction="block" gap="small">
+                              <s-stack direction="block" gap="small-500">
+                                <s-heading>{r.customerName ?? "Customer"}</s-heading>
+                                {r.customerLocation ? (
+                                  <s-paragraph>
+                                    <span className={styles.popoverLine}>
+                                      {r.customerLocation}
+                                    </span>
+                                  </s-paragraph>
+                                ) : null}
+                                {r.customerOrdersCount != null ? (
+                                  <s-paragraph>
+                                    <span className={styles.popoverLine}>
+                                      {r.customerOrdersCount}{" "}
+                                      {r.customerOrdersCount === 1 ? "order" : "orders"}
+                                    </span>
+                                  </s-paragraph>
+                                ) : null}
+                              </s-stack>
+                              {r.email ? (
+                                <s-link href={`mailto:${r.email}`}>
+                                  <span className={styles.popoverLine}>{r.email}</span>
+                                </s-link>
+                              ) : null}
+                              <s-button
+                                variant="secondary"
+                                inlineSize="fill"
+                                href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
+                                target="_top"
+                              >
+                                View customer
+                              </s-button>
+                            </s-stack>
+                          </s-box>
+                        </s-popover>
+                      </>
                     ) : (
-                      "—"
+                      r.customerName ?? r.email ?? "—"
                     )}
                   </s-table-cell>
+                  <s-table-cell>{r.quantity}</s-table-cell>
+                  <s-table-cell>{r.locationName ?? "—"}</s-table-cell>
                   <s-table-cell>
                     {r.fulfillmentStatus ? (
                       <s-badge tone={fulfillmentTone(r.fulfillmentStatus)}>
@@ -246,25 +313,6 @@ function titleCase(status: string): string {
 }
 
 type BadgeTone = "success" | "info" | "warning" | "critical" | "caution" | "neutral";
-
-function paymentTone(status: string): BadgeTone {
-  switch (status) {
-    case "PAID":
-      return "success";
-    case "PENDING":
-    case "AUTHORIZED":
-    case "PARTIALLY_PAID":
-      return "warning";
-    case "REFUNDED":
-    case "PARTIALLY_REFUNDED":
-      return "info";
-    case "VOIDED":
-    case "EXPIRED":
-      return "critical";
-    default:
-      return "neutral";
-  }
-}
 
 function fulfillmentTone(status: string): BadgeTone {
   switch (status) {
