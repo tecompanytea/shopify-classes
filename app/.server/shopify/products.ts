@@ -21,6 +21,17 @@ export type ShopifyProductDetail = ShopifyProductSummary & {
   }>;
 };
 
+export type ProductOptionSummary = {
+  id: string;
+  name: string;
+  values: string[];
+};
+
+export type SessionDateOption = {
+  sessionOption: ProductOptionSummary;
+  productOptions: ProductOptionSummary[];
+};
+
 const PRODUCT_SUMMARY_FIELDS = /* GraphQL */ `
   id
   title
@@ -83,36 +94,38 @@ export async function getProduct(
   return {
     ...mapProductSummary(product),
     descriptionHtml: product.descriptionHtml ?? "",
-    variants: (product.variants?.nodes ?? []).map((v: {
-      id: string;
-      title: string;
-      sku: string | null;
-      price: string;
-      inventoryQuantity: number | null;
-      inventoryItem: { id: string } | null;
-    }) => ({
-      id: v.id,
-      title: v.title,
-      sku: v.sku,
-      price: v.price,
-      inventoryQuantity: v.inventoryQuantity,
-      inventoryItemId: v.inventoryItem?.id ?? null,
-    })),
+    variants: (product.variants?.nodes ?? []).map(
+      (v: {
+        id: string;
+        title: string;
+        sku: string | null;
+        price: string;
+        inventoryQuantity: number | null;
+        inventoryItem: { id: string } | null;
+      }) => ({
+        id: v.id,
+        title: v.title,
+        sku: v.sku,
+        price: v.price,
+        inventoryQuantity: v.inventoryQuantity,
+        inventoryItemId: v.inventoryItem?.id ?? null,
+      }),
+    ),
   };
 }
 
 export async function ensureSessionDateOption(
   admin: AdminApiContext,
   productGid: string,
-): Promise<{ optionId: string; name: string } | null> {
-  // Make sure the product has an option named "Session" we can attach
-  // variant-session values to. If it already has one, reuse it; otherwise
-  // create it.
+): Promise<SessionDateOption | null> {
+  // Reuse a merchant-created date option when present. Products that already
+  // use "Date" must receive a Date option value; Shopify rejects a new variant
+  // that only provides "Session".
   const response = await admin.graphql(
     `#graphql
       query ProductOptions($id: ID!) {
         product(id: $id) {
-          options { id name }
+          options { id name values }
         }
       }
     `,
@@ -120,16 +133,15 @@ export async function ensureSessionDateOption(
   );
 
   const body = await response.json();
-  const existing = (body?.data?.product?.options ?? []).find(
-    (o: { name: string }) => o.name.toLowerCase() === "session",
-  );
-  if (existing) return { optionId: existing.id, name: existing.name };
+  const options = mapProductOptions(body?.data?.product?.options ?? []);
+  const existing = pickSessionDateOption(options);
+  if (existing) return { sessionOption: existing, productOptions: options };
 
   const create = await admin.graphql(
     `#graphql
       mutation CreateSessionOption($productId: ID!, $options: [OptionCreateInput!]!) {
         productOptionsCreate(productId: $productId, options: $options) {
-          product { options { id name } }
+          product { options { id name values } }
           userErrors { field message }
         }
       }
@@ -144,12 +156,43 @@ export async function ensureSessionDateOption(
   const createBody = await create.json();
   const errors = createBody?.data?.productOptionsCreate?.userErrors ?? [];
   if (errors.length) {
-    throw new Error(`productOptionsCreate: ${errors.map((e: { message: string }) => e.message).join("; ")}`);
+    throw new Error(
+      `productOptionsCreate: ${errors.map((e: { message: string }) => e.message).join("; ")}`,
+    );
   }
-  const newOption = (createBody?.data?.productOptionsCreate?.product?.options ?? []).find(
-    (o: { name: string }) => o.name.toLowerCase() === "session",
+  const updatedOptions = mapProductOptions(
+    createBody?.data?.productOptionsCreate?.product?.options ?? [],
   );
-  return newOption ? { optionId: newOption.id, name: newOption.name } : null;
+  const newOption = updatedOptions.find(
+    (option) => option.name.toLowerCase() === "session",
+  );
+  return newOption
+    ? { sessionOption: newOption, productOptions: updatedOptions }
+    : null;
+}
+
+function mapProductOptions(
+  options: Array<{
+    id: string;
+    name: string;
+    values?: string[] | null;
+  }>,
+): ProductOptionSummary[] {
+  return options.map((option) => ({
+    id: option.id,
+    name: option.name,
+    values: option.values ?? [],
+  }));
+}
+
+function pickSessionDateOption(
+  options: ProductOptionSummary[],
+): ProductOptionSummary | null {
+  return (
+    options.find((option) => option.name.toLowerCase() === "date") ??
+    options.find((option) => option.name.toLowerCase() === "session") ??
+    null
+  );
 }
 
 function mapProductSummary(p: {

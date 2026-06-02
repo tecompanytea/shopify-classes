@@ -11,16 +11,34 @@ import { DateTime } from "luxon";
 export type ParsedSessionTitle = {
   /** YYYY-MM-DD in the given zone, or null if no date could be parsed. */
   date: string | null;
+  /** HH:mm in the given zone, or null if no time could be parsed. */
+  time: string | null;
 };
 
 const MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
 };
 
 // Luxon weekday numbers: Monday = 1 … Sunday = 7.
 const WEEKDAYS: Record<string, number> = {
-  mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 7,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+  sun: 7,
 };
 
 function normalizeYear(year: number): number {
@@ -29,7 +47,26 @@ function normalizeYear(year: number): number {
 
 function findWeekday(lower: string): number | null {
   const match = lower.match(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/);
-  return match ? WEEKDAYS[match[1]] ?? null : null;
+  return match ? (WEEKDAYS[match[1]] ?? null) : null;
+}
+
+function findTime(lower: string): { hour: number; minute: number } | null {
+  const meridiem = lower.match(
+    /\b(1[0-2]|0?[1-9])(?:\s*:\s*([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/,
+  );
+  if (meridiem) {
+    let hour = Number(meridiem[1]);
+    const minute = meridiem[2] ? Number(meridiem[2]) : 0;
+    const period = meridiem[3].replace(/\./g, "");
+    if (period === "pm" && hour !== 12) hour += 12;
+    if (period === "am" && hour === 12) hour = 0;
+    return { hour, minute };
+  }
+
+  const twentyFour = lower.match(/\b([01]?\d|2[0-3])\s*:\s*([0-5]\d)\b/);
+  return twentyFour
+    ? { hour: Number(twentyFour[1]), minute: Number(twentyFour[2]) }
+    : null;
 }
 
 function inferYear(
@@ -52,20 +89,27 @@ function inferYear(
 
   // Prefer the candidate whose date is closest to now.
   pool.sort(
-    (a, b) => Math.abs(a.diff(now).as("days")) - Math.abs(b.diff(now).as("days")),
+    (a, b) =>
+      Math.abs(a.diff(now).as("days")) - Math.abs(b.diff(now).as("days")),
   );
   return pool[0].year;
 }
 
-export function parseSessionTitle(title: string, now: DateTime): ParsedSessionTitle {
+export function parseSessionTitle(
+  title: string,
+  now: DateTime,
+): ParsedSessionTitle {
   const lower = title.toLowerCase().trim();
   const weekday = findWeekday(lower);
+  const parsedTime = findTime(lower);
 
   let month: number | null = null;
   let day: number | null = null;
   let explicitYear: number | null = null;
 
-  const slash = lower.match(/\b(\d{1,2})\s*[/\-]\s*(\d{1,2})(?:\s*[/\-]\s*(\d{2,4}))?\b/);
+  const slash = lower.match(
+    /\b(\d{1,2})\s*[/-]\s*(\d{1,2})(?:\s*[/-]\s*(\d{2,4}))?\b/,
+  );
   if (slash) {
     month = Number(slash[1]);
     day = Number(slash[2]);
@@ -90,13 +134,27 @@ export function parseSessionTitle(title: string, now: DateTime): ParsedSessionTi
   }
 
   if (!month || !day || month < 1 || month > 12 || day < 1 || day > 31) {
-    return { date: null };
+    return {
+      date: null,
+      time: parsedTime
+        ? DateTime.fromObject(parsedTime).toFormat("HH:mm")
+        : null,
+    };
   }
 
   const year = explicitYear ?? inferYear(month, day, weekday, now);
   const zone = now.zoneName ?? "utc";
   const dt = DateTime.fromObject({ year, month, day }, { zone });
-  if (!dt.isValid) return { date: null };
+  if (!dt.isValid)
+    return {
+      date: null,
+      time: parsedTime
+        ? DateTime.fromObject(parsedTime).toFormat("HH:mm")
+        : null,
+    };
 
-  return { date: dt.toFormat("yyyy-LL-dd") };
+  return {
+    date: dt.toFormat("yyyy-LL-dd"),
+    time: parsedTime ? DateTime.fromObject(parsedTime).toFormat("HH:mm") : null,
+  };
 }

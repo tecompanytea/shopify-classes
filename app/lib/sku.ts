@@ -3,7 +3,11 @@ import { DateTime } from "luxon";
 // Generates a deterministic SKU for a class session variant.
 // Format: CLASS-{SLUG}-{YYYYMMDD}-{HHMM}
 // Example: CLASS-BREWING-WORKSHOP-20260523-1500
-export function generateSessionSku(productTitle: string, startsAtIso: string, timezone: string): string {
+export function generateSessionSku(
+  productTitle: string,
+  startsAtIso: string,
+  timezone: string,
+): string {
   const dt = DateTime.fromISO(startsAtIso, { zone: timezone });
   const slug = productTitle
     .toUpperCase()
@@ -15,7 +19,33 @@ export function generateSessionSku(productTitle: string, startsAtIso: string, ti
   return `CLASS-${slug}-${date}-${time}`;
 }
 
-export function formatSessionTitle(startsAtIso: string, timezone: string): string {
+export function parseSessionSku(
+  sku: string | null | undefined,
+  timezone: string,
+): { date: string; time: string; startsAtIso: string } | null {
+  const match = sku?.match(/-(\d{8})-(\d{4})$/);
+  if (!match) return null;
+
+  const startsAt = DateTime.fromFormat(
+    `${match[1]}${match[2]}`,
+    "yyyyLLddHHmm",
+    {
+      zone: timezone,
+    },
+  );
+  if (!startsAt.isValid) return null;
+
+  return {
+    date: startsAt.toFormat("yyyy-LL-dd"),
+    time: startsAt.toFormat("HH:mm"),
+    startsAtIso: startsAt.toISO()!,
+  };
+}
+
+export function formatSessionTitle(
+  startsAtIso: string,
+  timezone: string,
+): string {
   return DateTime.fromISO(startsAtIso, { zone: timezone }).toFormat(
     "ccc LLL d, yyyy 'at' h:mm a",
   );
@@ -23,7 +53,10 @@ export function formatSessionTitle(startsAtIso: string, timezone: string): strin
 
 // Compact, year-less class date for the bookings table.
 // Example: "Saturday Jun 6, at 3:00 PM".
-export function formatBookingDate(startsAtIso: string, timezone: string): string {
+export function formatBookingDate(
+  startsAtIso: string,
+  timezone: string,
+): string {
   return DateTime.fromISO(startsAtIso, { zone: timezone }).toFormat(
     "cccc LLL d, 'at' h:mm a",
   );

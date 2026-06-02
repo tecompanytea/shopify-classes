@@ -1,4 +1,5 @@
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
+import type { SessionDateOption } from "./products";
 
 export type SessionDraft = {
   startsAt: Date;
@@ -17,30 +18,34 @@ export type SessionCreateResult = {
 };
 
 // Bulk-creates one variant per session draft. Each variant uses the product's
-// "Session" option, with the human-readable date string as its value. Shopify
-// enforces unique option-value tuples per product, which is exactly what we
-// want — a duplicate date will fail loudly instead of silently colliding.
+// resolved date/session option, with the human-readable date string as its
+// value. Shopify enforces unique option-value tuples per product, which is
+// exactly what we want — a duplicate date fails loudly instead of colliding.
 export async function createSessionVariants(
   admin: AdminApiContext,
   {
     productGid,
     drafts,
     currencyCode,
+    option,
   }: {
     productGid: string;
     drafts: SessionDraft[];
     currencyCode: string;
+    option: SessionDateOption;
   },
 ): Promise<SessionCreateResult[]> {
   if (drafts.length === 0) return [];
 
   const variants = drafts.map((draft) => ({
-    optionValues: [{ optionName: "Session", name: draft.displayName }],
+    optionValues: buildSessionOptionValues(option, draft.displayName),
     inventoryItem: {
       sku: draft.sku,
       tracked: true,
     },
-    inventoryQuantities: undefined as undefined | { availableQuantity: number; locationId: string }[],
+    inventoryQuantities: undefined as
+      | undefined
+      | { availableQuantity: number; locationId: string }[],
   }));
 
   const response = await admin.graphql(
@@ -66,7 +71,10 @@ export async function createSessionVariants(
   if (errors.length) {
     throw new Error(
       `productVariantsBulkCreate: ${errors
-        .map((e: { field?: string[]; message: string }) => `${e.field?.join(".") ?? ""} ${e.message}`)
+        .map(
+          (e: { field?: string[]; message: string }) =>
+            `${e.field?.join(".") ?? ""} ${e.message}`,
+        )
         .join("; ")}`,
     );
   }
@@ -75,23 +83,25 @@ export async function createSessionVariants(
   // currency-aware variant creation if Shopify requires an explicit price.
   void currencyCode;
 
-  return (payload?.productVariants ?? []).map((v: {
-    id: string;
-    sku: string | null;
-    title: string;
-    inventoryItem: { id: string } | null;
-  }) => ({
-    variantGid: v.id,
-    inventoryItemGid: v.inventoryItem?.id ?? null,
-    sku: v.sku ?? "",
-    displayName: v.title,
-  }));
+  return (payload?.productVariants ?? []).map(
+    (v: {
+      id: string;
+      sku: string | null;
+      title: string;
+      inventoryItem: { id: string } | null;
+    }) => ({
+      variantGid: v.id,
+      inventoryItemGid: v.inventoryItem?.id ?? null,
+      sku: v.sku ?? "",
+      displayName: v.title,
+    }),
+  );
 }
 
-// Updates an existing session variant's date — the "Session" option value (the
-// human-readable title customers see) and its SKU. Used when a merchant edits a
-// session's date/time after creation. Shopify still enforces unique option-value
-// tuples, so editing to a date that already exists on the product fails loudly.
+// Updates an existing session variant's date option value (the human-readable
+// title customers see) and its SKU. Used when a merchant edits a session's
+// date/time after creation. Shopify still enforces unique option-value tuples,
+// so editing to a date that already exists on the product fails loudly.
 export async function updateSessionVariant(
   admin: AdminApiContext,
   {
@@ -99,7 +109,14 @@ export async function updateSessionVariant(
     variantId,
     displayName,
     sku,
-  }: { productGid: string; variantId: string; displayName: string; sku: string },
+    option,
+  }: {
+    productGid: string;
+    variantId: string;
+    displayName: string;
+    sku: string;
+    option: SessionDateOption;
+  },
 ): Promise<void> {
   const response = await admin.graphql(
     `#graphql
@@ -116,7 +133,9 @@ export async function updateSessionVariant(
         variants: [
           {
             id: variantId,
-            optionValues: [{ optionName: "Session", name: displayName }],
+            optionValues: [
+              { optionId: option.sessionOption.id, name: displayName },
+            ],
             inventoryItem: { sku },
           },
         ],
@@ -129,10 +148,26 @@ export async function updateSessionVariant(
   if (errors.length) {
     throw new Error(
       `productVariantsBulkUpdate: ${errors
-        .map((e: { field?: string[]; message: string }) => `${e.field?.join(".") ?? ""} ${e.message}`)
+        .map(
+          (e: { field?: string[]; message: string }) =>
+            `${e.field?.join(".") ?? ""} ${e.message}`,
+        )
         .join("; ")}`,
     );
   }
+}
+
+function buildSessionOptionValues(
+  option: SessionDateOption,
+  displayName: string,
+): Array<{ optionId: string; name: string }> {
+  return option.productOptions.map((productOption) => ({
+    optionId: productOption.id,
+    name:
+      productOption.id === option.sessionOption.id
+        ? displayName
+        : (productOption.values[0] ?? "Default Title"),
+  }));
 }
 
 export async function deleteVariants(
@@ -189,6 +224,8 @@ export async function setInventoryAtLocation(
   const body = await activate.json();
   const errors = body?.data?.inventoryActivate?.userErrors ?? [];
   if (errors.length) {
-    throw new Error(`inventoryActivate: ${errors.map((e: { message: string }) => e.message).join("; ")}`);
+    throw new Error(
+      `inventoryActivate: ${errors.map((e: { message: string }) => e.message).join("; ")}`,
+    );
   }
 }

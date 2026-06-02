@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ActionFunctionArgs, HeadersFunction, LoaderFunctionArgs } from "react-router";
+import type {
+  ActionFunctionArgs,
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "react-router";
 import {
   Form,
   redirect,
@@ -40,7 +44,9 @@ type WizardLoader = {
   shopifyLocations: ShopifyLocation[];
 };
 
-export const loader = async ({ request }: LoaderFunctionArgs): Promise<WizardLoader> => {
+export const loader = async ({
+  request,
+}: LoaderFunctionArgs): Promise<WizardLoader> => {
   const { session, admin } = await authenticate.admin(request);
   const settings = await getOrCreateShopSettings(session.shop);
 
@@ -74,12 +80,16 @@ type IncomingSession = {
   sku?: string | null;
 };
 
-export const action = async ({ request }: ActionFunctionArgs): Promise<ActionData | Response> => {
+export const action = async ({
+  request,
+}: ActionFunctionArgs): Promise<ActionData | Response> => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
 
   const eventName = String(formData.get("eventName") ?? "").trim();
-  const productMode = String(formData.get("productMode") ?? "with-product") as ProductMode;
+  const productMode = String(
+    formData.get("productMode") ?? "with-product",
+  ) as ProductMode;
   const productGid = String(formData.get("productGid") ?? "");
   const productTitle = String(formData.get("productTitle") ?? "");
   const locationId = String(formData.get("locationId") ?? "");
@@ -115,7 +125,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
   // Only creating fresh variants needs an inventory location (we set seats on
   // them). Adopting existing variants leaves their inventory untouched.
   if (toCreate.length > 0 && !shopifyLocationGid) {
-    return { error: "Pick a Shopify location for inventory." };
+    return { error: "No Shopify inventory location is available." };
   }
 
   const sessionRows: Array<{
@@ -142,13 +152,21 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
       };
     });
 
-    await ensureSessionDateOption(admin, productGid);
-    const currencyCode = await getShopCurrency(admin);
-    const created = await createSessionVariants(admin, {
-      productGid,
-      drafts,
-      currencyCode,
-    });
+    let created: Awaited<ReturnType<typeof createSessionVariants>>;
+    try {
+      const option = await ensureSessionDateOption(admin, productGid);
+      if (!option)
+        return { error: "Couldn't prepare the product date option." };
+      const currencyCode = await getShopCurrency(admin);
+      created = await createSessionVariants(admin, {
+        productGid,
+        drafts,
+        currencyCode,
+        option,
+      });
+    } catch (error) {
+      return { error: shopifyMutationError(error) };
+    }
 
     await Promise.all(
       created
@@ -183,7 +201,9 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
     sessionRows.push({
       variantGid: s.variantGid!,
       inventoryItemGid: s.inventoryItemGid ?? null,
-      sku: s.sku || generateSessionSku(eventTitle, startsAt.toISO()!, CLASS_TIMEZONE),
+      sku:
+        s.sku ||
+        generateSessionSku(eventTitle, startsAt.toISO()!, CLASS_TIMEZONE),
       startsAt: startsAt.toJSDate(),
       endsAt: endsAt.toJSDate(),
       capacity: s.capacity ?? defaultCapacity,
@@ -240,7 +260,8 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionDat
   return redirect(`/app/classes/${classProduct.id}`);
 };
 
-export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);
 
 export function ErrorBoundary() {
   return boundary.error(useRouteError());
@@ -288,7 +309,8 @@ type SessionRow = {
 };
 
 export default function NewClassWizard() {
-  const { defaults, locations, shopifyLocations } = useLoaderData<typeof loader>();
+  const { defaults, locations, shopifyLocations } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
@@ -297,9 +319,7 @@ export default function NewClassWizard() {
   const [productMode, setProductMode] = useState<ProductMode>("with-product");
   const [picked, setPicked] = useState<PickedProduct | null>(null);
   const [locationId, setLocationId] = useState(defaults.locationId ?? "");
-  const [shopifyLocationGid, setShopifyLocationGid] = useState(
-    shopifyLocations[0]?.id ?? "",
-  );
+  const shopifyLocationGid = shopifyLocations[0]?.id ?? "";
   const [durationMin, setDurationMin] = useState(defaults.durationMin);
   const [defaultCapacity, setDefaultCapacity] = useState(defaults.capacity);
   const [tags, setTags] = useState("");
@@ -311,13 +331,17 @@ export default function NewClassWizard() {
     () => DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd"),
     [],
   );
-  const [sessions, setSessions] = useState<SessionRow[]>([{ date: todayIso, time: "15:00" }]);
+  const [sessions, setSessions] = useState<SessionRow[]>([
+    { date: todayIso, time: "15:00" },
+  ]);
   const productPickerOpen = useRef(false);
   const sessionsPayload = useMemo(() => {
     return sessions
       .filter((s) => s.date && s.time)
       .map((s) => {
-        const iso = DateTime.fromISO(`${s.date}T${s.time}`, { zone: CLASS_TIMEZONE }).toISO();
+        const iso = DateTime.fromISO(`${s.date}T${s.time}`, {
+          zone: CLASS_TIMEZONE,
+        }).toISO();
         return {
           startsAt: iso,
           capacity: s.capacity ?? defaultCapacity,
@@ -344,7 +368,9 @@ export default function NewClassWizard() {
     if (candidates.length === 0) {
       // No dated variants — clear any adopt rows left from a previous product.
       setSessions((rs) =>
-        rs.some((r) => r.variantGid) ? [{ date: todayIso, time: defaultTime }] : rs,
+        rs.some((r) => r.variantGid)
+          ? [{ date: todayIso, time: defaultTime }]
+          : rs,
       );
       return;
     }
@@ -360,7 +386,13 @@ export default function NewClassWizard() {
         originalTitle: c.title,
       })),
     );
-  }, [variantsFetcher.state, variantsFetcher.data, picked?.id, todayIso, defaultTime]);
+  }, [
+    variantsFetcher.state,
+    variantsFetcher.data,
+    picked?.id,
+    todayIso,
+    defaultTime,
+  ]);
 
   const pickProduct = async (initialQuery = "") => {
     if (productPickerOpen.current) return;
@@ -370,18 +402,20 @@ export default function NewClassWizard() {
     // App Bridge ResourcePicker, available globally inside embedded apps.
     try {
       const query = initialQuery.trim();
-      const result = await (window as unknown as {
-        shopify: {
-          resourcePicker: (opts: {
-            type: "product";
-            multiple?: boolean;
-            query?: string;
-            filter?: {
-              variants?: boolean;
-            };
-          }) => Promise<ResourcePickerProduct[] | undefined>;
-        };
-      }).shopify.resourcePicker({
+      const result = await (
+        window as unknown as {
+          shopify: {
+            resourcePicker: (opts: {
+              type: "product";
+              multiple?: boolean;
+              query?: string;
+              filter?: {
+                variants?: boolean;
+              };
+            }) => Promise<ResourcePickerProduct[] | undefined>;
+          };
+        }
+      ).shopify.resourcePicker({
         type: "product",
         multiple: false,
         filter: { variants: true },
@@ -412,26 +446,28 @@ export default function NewClassWizard() {
   const createFormId = "new-event-create-form";
   const displayLocationName =
     locations.find((l) => l.id === locationId)?.name ?? "—";
-  const inventoryLocationName =
-    shopifyLocations.find((l) => l.id === shopifyLocationGid)?.name ?? "—";
   const sessionCount = sessionsPayload.length;
   const adopting = sessions.some((s) => s.variantGid);
-  const hasNewSessions = sessions.some((s) => s.date && s.time && !s.variantGid);
+  const hasNewSessions = sessions.some(
+    (s) => s.date && s.time && !s.variantGid,
+  );
   const readyToCreate = Boolean(
     eventTitle &&
-      withProduct &&
-      picked &&
-      sessionsPayload.length > 0 &&
-      (!hasNewSessions || shopifyLocationGid),
+    withProduct &&
+    picked &&
+    sessionsPayload.length > 0 &&
+    (!hasNewSessions || shopifyLocationGid),
   );
   const canCreate = readyToCreate && !submitting;
   const summaryRows = [
     { label: "Name", value: eventTitle || "—" },
-    { label: "Product", value: withProduct ? picked?.title ?? "—" : "No product" },
+    {
+      label: "Product",
+      value: withProduct ? (picked?.title ?? "—") : "No product",
+    },
     { label: "Duration", value: `${durationMin} min` },
     { label: "Capacity", value: `${defaultCapacity} seats` },
     { label: "Location", value: displayLocationName },
-    ...(adopting ? [] : [{ label: "Inventory", value: inventoryLocationName }]),
   ];
 
   function submitCreateForm() {
@@ -453,7 +489,11 @@ export default function NewClassWizard() {
 
       <s-section slot="aside" accessibilityLabel="Event summary">
         <s-stack direction="block" gap="base">
-          <s-stack direction="inline" justifyContent="space-between" alignItems="start">
+          <s-stack
+            direction="inline"
+            justifyContent="space-between"
+            alignItems="start"
+          >
             <s-heading>Summary</s-heading>
             <s-badge>Draft</s-badge>
           </s-stack>
@@ -500,21 +540,30 @@ export default function NewClassWizard() {
           labelAccessibilityVisibility="exclusive"
           values={[productMode]}
           onChange={(e) => {
-            const [value] = (e.currentTarget as HTMLElement & { values?: string[] }).values ?? [];
-            setProductMode(value === "without-product" ? "without-product" : "with-product");
+            const [value] =
+              (e.currentTarget as HTMLElement & { values?: string[] }).values ??
+              [];
+            setProductMode(
+              value === "without-product" ? "without-product" : "with-product",
+            );
           }}
         >
           <s-choice value="with-product">
             Create service with product
             <s-text slot="details">
-              Link this service to a product to enable pricing and payment collection.
+              Link this service to a product to enable pricing and payment
+              collection.
             </s-text>
           </s-choice>
         </s-choice-list>
 
         {withProduct && (
           <s-box paddingBlockStart="small-200">
-            <s-grid gridTemplateColumns="1fr auto" gap="small-400" alignItems="stretch">
+            <s-grid
+              gridTemplateColumns="1fr auto"
+              gap="small-400"
+              alignItems="stretch"
+            >
               <s-search-field
                 label="Search"
                 labelAccessibilityVisibility="exclusive"
@@ -522,7 +571,11 @@ export default function NewClassWizard() {
                 value=""
                 onInput={openProductPickerFromSearch}
               />
-              <s-button type="button" variant="secondary" onClick={() => pickProduct()}>
+              <s-button
+                type="button"
+                variant="secondary"
+                onClick={() => pickProduct()}
+              >
                 Add product
               </s-button>
             </s-grid>
@@ -552,7 +605,9 @@ export default function NewClassWizard() {
                       )}
                       <s-stack direction="block" gap="none">
                         <s-text type="strong">{picked.title}</s-text>
-                        <s-text color="subdued">{variantSelectionLabel(picked)}</s-text>
+                        <s-text color="subdued">
+                          {variantSelectionLabel(picked)}
+                        </s-text>
                       </s-stack>
                     </s-stack>
 
@@ -589,8 +644,12 @@ export default function NewClassWizard() {
           labelAccessibilityVisibility="exclusive"
           values={[productMode]}
           onChange={(e) => {
-            const [value] = (e.currentTarget as HTMLElement & { values?: string[] }).values ?? [];
-            setProductMode(value === "without-product" ? "without-product" : "with-product");
+            const [value] =
+              (e.currentTarget as HTMLElement & { values?: string[] }).values ??
+              [];
+            setProductMode(
+              value === "without-product" ? "without-product" : "with-product",
+            );
           }}
         >
           <s-choice value="without-product">
@@ -604,7 +663,8 @@ export default function NewClassWizard() {
 
       <s-section heading="Schedule defaults">
         <s-paragraph>
-          These apply to every session. Price comes from the selected Shopify product.
+          These apply to every session. Price comes from the selected Shopify
+          product.
         </s-paragraph>
         <s-select
           label="Display location"
@@ -620,32 +680,23 @@ export default function NewClassWizard() {
           ))}
         </s-select>
 
-        {!adopting && (
-          <s-select
-            label="Shopify inventory location"
-            details="Where seat inventory is tracked for new dates. Required for checkout."
-            value={shopifyLocationGid}
-            onChange={(e) => setShopifyLocationGid((e.target as HTMLSelectElement).value)}
-          >
-            {shopifyLocations.map((l) => (
-              <s-option key={l.id} value={l.id}>
-                {l.name}
-              </s-option>
-            ))}
-          </s-select>
-        )}
-
         <s-number-field
           label="Duration"
           suffix="minutes"
           value={String(durationMin)}
-          onChange={(e) => setDurationMin(Number((e.target as HTMLInputElement).value) || 0)}
+          onChange={(e) =>
+            setDurationMin(Number((e.target as HTMLInputElement).value) || 0)
+          }
         />
         <s-number-field
           label="Default capacity"
           suffix="seats"
           value={String(defaultCapacity)}
-          onChange={(e) => setDefaultCapacity(Number((e.target as HTMLInputElement).value) || 0)}
+          onChange={(e) =>
+            setDefaultCapacity(
+              Number((e.target as HTMLInputElement).value) || 0,
+            )
+          }
         />
       </s-section>
 
@@ -655,13 +706,14 @@ export default function NewClassWizard() {
         ) : adopting ? (
           <s-banner tone="info">
             Imported {sessions.filter((s) => s.variantGid).length} existing date
-            {sessions.filter((s) => s.variantGid).length === 1 ? "" : "s"} from this
-            product. Set the start time and confirm seats, then create. This links the
-            existing variants and will not change your product or its inventory.
+            {sessions.filter((s) => s.variantGid).length === 1 ? "" : "s"} from
+            this product. Set the start time and confirm seats, then create.
+            This links the existing variants and will not change your product or
+            its inventory.
           </s-banner>
         ) : (
           <s-paragraph>
-            Each session becomes a Shopify variant on the selected product. Inventory equals capacity.
+            Each session becomes a Shopify variant on the selected product.
           </s-paragraph>
         )}
 
@@ -684,13 +736,21 @@ export default function NewClassWizard() {
               <s-date-field
                 label={idx === 0 ? "Date" : undefined}
                 value={row.date}
-                onChange={(e) => updateRow(setSessions, idx, { date: (e.target as HTMLInputElement).value })}
+                onChange={(e) =>
+                  updateRow(setSessions, idx, {
+                    date: (e.target as HTMLInputElement).value,
+                  })
+                }
               />
               <s-text-field
                 label={idx === 0 ? "Start time" : undefined}
                 placeholder="15:00"
                 value={row.time}
-                onChange={(e) => updateRow(setSessions, idx, { time: (e.target as HTMLInputElement).value })}
+                onChange={(e) =>
+                  updateRow(setSessions, idx, {
+                    time: (e.target as HTMLInputElement).value,
+                  })
+                }
               />
               <s-number-field
                 label={idx === 0 ? "Capacity" : undefined}
@@ -708,7 +768,9 @@ export default function NewClassWizard() {
                 type="button"
                 variant="tertiary"
                 tone="critical"
-                onClick={() => setSessions((rs) => rs.filter((_, i) => i !== idx))}
+                onClick={() =>
+                  setSessions((rs) => rs.filter((_, i) => i !== idx))
+                }
                 disabled={sessions.length === 1}
               >
                 Remove
@@ -726,7 +788,10 @@ export default function NewClassWizard() {
             onClick={() =>
               setSessions((rs) => [
                 ...rs,
-                { date: rs[rs.length - 1]?.date ?? todayIso, time: rs[rs.length - 1]?.time ?? defaultTime },
+                {
+                  date: rs[rs.length - 1]?.date ?? todayIso,
+                  time: rs[rs.length - 1]?.time ?? defaultTime,
+                },
               ])
             }
           >
@@ -741,11 +806,19 @@ export default function NewClassWizard() {
         <input type="hidden" name="productGid" value={picked?.id ?? ""} />
         <input type="hidden" name="productTitle" value={picked?.title ?? ""} />
         <input type="hidden" name="locationId" value={locationId} />
-        <input type="hidden" name="shopifyLocationGid" value={shopifyLocationGid} />
+        <input
+          type="hidden"
+          name="shopifyLocationGid"
+          value={shopifyLocationGid}
+        />
         <input type="hidden" name="durationMin" value={durationMin} />
         <input type="hidden" name="defaultCapacity" value={defaultCapacity} />
         <input type="hidden" name="tags" value={tags} />
-        <input type="hidden" name="sessions" value={JSON.stringify(sessionsPayload)} />
+        <input
+          type="hidden"
+          name="sessions"
+          value={JSON.stringify(sessionsPayload)}
+        />
       </Form>
     </s-page>
   );
@@ -760,13 +833,19 @@ function updateRow(
 }
 
 function toPickedProduct(product: ResourcePickerProduct): PickedProduct {
-  const image = product.images?.[0] ?? product.featuredImage ?? product.image ?? null;
+  const image =
+    product.images?.[0] ?? product.featuredImage ?? product.image ?? null;
 
   return {
     id: product.id,
     title: product.title,
     handle: product.handle,
-    imageUrl: image?.src ?? image?.url ?? image?.originalSrc ?? image?.transformedSrc ?? null,
+    imageUrl:
+      image?.src ??
+      image?.url ??
+      image?.originalSrc ??
+      image?.transformedSrc ??
+      null,
     imageAlt: image?.alt ?? image?.altText ?? `Image of ${product.title}`,
     selectedVariantCount: product.variants?.length ?? null,
     totalVariants: product.totalVariants ?? product.variants?.length ?? null,
@@ -782,7 +861,9 @@ function variantSelectionLabel(product: PickedProduct): string {
     return total === 1 ? "1 variant" : `${total} variants`;
   }
   if (total == null) {
-    return selected === 1 ? "1 variant selected" : `${selected} variants selected`;
+    return selected === 1
+      ? "1 variant selected"
+      : `${selected} variants selected`;
   }
 
   return `${selected} of ${total} ${total === 1 ? "variant" : "variants"} selected`;
@@ -794,4 +875,10 @@ function normalizeTags(value: string): string | null {
     .map((tag) => tag.trim())
     .filter(Boolean);
   return tags.length ? tags.join(", ") : null;
+}
+
+function shopifyMutationError(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Couldn't update the Shopify product.";
 }
