@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { redirect, Form, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
+import db from "../../db.server";
 
 import styles from "./styles.module.css";
 
@@ -16,6 +17,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (hasEmbeddedContext) {
     throw redirect(`/app?${url.searchParams.toString()}`);
+  }
+
+  // No embedded context. Shopify reloads the app at its App URL (this root) when
+  // it re-establishes the session — a short-lived session token refresh or an
+  // offline-token OAuth bounce — and the shop/host params don't always survive
+  // that round trip. Rather than dead-ending on the public login splash, recover
+  // the shop from stored sessions (this is a single-merchant app) and hand off to
+  // /app, which re-authenticates properly. Only fall back to the form when we
+  // genuinely don't know the shop (fresh install, or somehow more than one).
+  const shops = await db.session.findMany({
+    select: { shop: true },
+    distinct: ["shop"],
+  });
+  if (shops.length === 1) {
+    throw redirect(`/app?shop=${encodeURIComponent(shops[0].shop)}`);
   }
 
   return { showForm: Boolean(login) };
