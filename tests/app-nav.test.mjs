@@ -10,6 +10,10 @@ const homeRoute = await readFile(
   new URL("../app/routes/app._index.tsx", import.meta.url),
   "utf8",
 );
+const publicRootRoute = await readFile(
+  new URL("../app/routes/_index/route.tsx", import.meta.url),
+  "utf8",
+);
 
 test("app nav keeps /app as the hidden Shopify home route", () => {
   const hiddenHomeLink = appRoute.match(
@@ -34,4 +38,9 @@ test("app nav keeps /app as the hidden Shopify home route", () => {
 test("app home uses the app label instead of Bookings", () => {
   assert.match(homeRoute, /<s-page heading="Classes">/);
   assert.doesNotMatch(homeRoute, /<s-page heading="Bookings">/);
+});
+
+test("Shopify app home clicks with appLoadId redirect into the embedded app", () => {
+  assert.match(publicRootRoute, /searchParams\.get\("appLoadId"\)/);
+  assert.match(publicRootRoute, /redirect\(`\/app\?\$\{url\.searchParams\.toString\(\)\}`\)/);
 });

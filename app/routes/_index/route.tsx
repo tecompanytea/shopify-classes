@@ -12,7 +12,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     Boolean(url.searchParams.get("host")) ||
     url.searchParams.get("embedded") === "1" ||
     Boolean(url.searchParams.get("id_token")) ||
-    Boolean(url.searchParams.get("shop"));
+    Boolean(url.searchParams.get("shop")) ||
+    Boolean(url.searchParams.get("appLoadId"));
 
   if (hasEmbeddedContext) {
     throw redirect(`/app?${url.searchParams.toString()}`);
