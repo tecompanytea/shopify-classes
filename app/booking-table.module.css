@@ -69,3 +69,25 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* Scope popover rows (Upcoming/Past/All). Reserve a check column so labels line
+   up; the selected row shows its check, others reveal a subdued check on hover. */
+.scopeOption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scopeCheck {
+  display: inline-flex;
+  visibility: hidden;
+}
+
+.scopeCheckSelected,
+s-clickable:hover .scopeCheck {
+  visibility: visible;
+}
+
+.scopeLabelSelected {
+  font-weight: 600;
+}

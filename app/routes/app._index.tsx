@@ -2,8 +2,7 @@ import { useState } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
 import {
   useLoaderData,
-  useNavigate,
-  useNavigation,
+  useRevalidator,
   useRouteError,
 } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -25,6 +24,16 @@ const SCOPE_OPTIONS: { label: string; scope: Scope }[] = [
 
 const DEFAULT_SCOPE: Scope = "upcoming";
 
+type SortField = "classDate" | "class" | "customer" | "location";
+type SortDir = "asc" | "desc";
+
+const SORT_OPTIONS: { label: string; field: SortField }[] = [
+  { label: "Class date", field: "classDate" },
+  { label: "Class", field: "class" },
+  { label: "Customer", field: "customer" },
+  { label: "Location", field: "location" },
+];
+
 type BookingTableRow = BookingRow & {
   classTitle: string;
   locationName: string | null;
@@ -32,24 +41,16 @@ type BookingTableRow = BookingRow & {
 };
 
 type LoaderResult = {
-  scope: Scope;
   rows: BookingTableRow[];
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderResult> => {
   const { session, admin } = await authenticate.admin(request);
-  const scope = parseScope(new URL(request.url).searchParams.get("scope")) ?? DEFAULT_SCOPE;
 
-  const now = new Date();
-  const startsAtFilter =
-    scope === "upcoming" ? { gte: now } : scope === "past" ? { lt: now } : undefined;
-
+  // Fetch every (non-cancelled) session + its bookings once. Scope filtering
+  // (upcoming/past/all) happens client-side, so switching it never refetches.
   const sessions = await db.classSession.findMany({
-    where: {
-      shop: session.shop,
-      cancelled: false,
-      ...(startsAtFilter ? { startsAt: startsAtFilter } : {}),
-    },
+    where: { shop: session.shop, cancelled: false },
     include: {
       classProduct: {
         select: { title: true, location: { select: { name: true } } },
@@ -57,7 +58,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
     },
   });
 
-  if (sessions.length === 0) return { scope, rows: [] };
+  if (sessions.length === 0) return { rows: [] };
 
   const variantToSession = new Map(sessions.map((s) => [s.variantGid, s]));
   const bookings = await listBookingsForVariants(admin, {
@@ -76,15 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
     });
   }
 
-  // Sort by the class date: soonest first for upcoming, most recent first otherwise.
-  const dir = scope === "upcoming" ? 1 : -1;
-  rows.sort(
-    (a, b) =>
-      dir *
-      (new Date(a.sessionStartsAt).getTime() - new Date(b.sessionStartsAt).getTime()),
-  );
-
-  return { scope, rows };
+  return { rows };
 };
 
 export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
@@ -94,83 +87,208 @@ export function ErrorBoundary() {
 }
 
 export default function Bookings() {
-  const { scope, rows } = useLoaderData<typeof loader>();
-  const navigate = useNavigate();
-  const navigation = useNavigation();
+  const { rows } = useLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
+  const [scope, setScope] = useState<Scope>(DEFAULT_SCOPE);
+  const [scopeMenuReady, setScopeMenuReady] = useState(false);
+  const [sortField, setSortField] = useState<SortField>("classDate");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [openCustomer, setOpenCustomer] = useState<number | null>(null);
+  const activeLabel = SCOPE_OPTIONS.find((o) => o.scope === scope)!.label;
+  const isDateSort = sortField === "classDate";
 
-  // Reflect the target scope immediately while the loader is in flight so the
-  // button/choice-list don't snap back to the stale value during navigation.
-  const pendingScope = navigation.location
-    ? parseScope(new URLSearchParams(navigation.location.search).get("scope"))
-    : null;
-  const activeScope = pendingScope ?? scope;
-  const activeLabel = SCOPE_OPTIONS.find((o) => o.scope === activeScope)!.label;
-
+  // Filter + sort client-side so switching scope/search/sort is instant (no refetch).
+  const now = Date.now();
   const q = query.trim().toLowerCase();
-  const visibleRows = q
-    ? rows.filter((r) =>
-        [r.classTitle, r.customerName, r.email, r.orderName].some((v) =>
-          v?.toLowerCase().includes(q),
-        ),
-      )
-    : rows;
-
-  const scopeButton = (
-    <s-button
-      variant="secondary"
-      icon="calendar"
-      accessibilityLabel="Filter by class date"
-      commandFor="bookings-scope-popover"
-    >
-      {activeLabel}
-    </s-button>
-  );
-  const scopePopover = (
-    <s-popover id="bookings-scope-popover">
-      <s-box paddingBlock="small-200" paddingInline="base">
-        <s-choice-list
-          label="Show classes"
-          name="bookings-scope"
-          labelAccessibilityVisibility="exclusive"
-          values={[activeScope]}
-          onChange={(event) => {
-            const next = event.currentTarget.values[0];
-            if (next && next !== activeScope) navigate(`/app?scope=${next}`);
-          }}
-        >
-          {SCOPE_OPTIONS.map((option) => (
-            <s-choice key={option.scope} value={option.scope}>
-              {option.label}
-            </s-choice>
-          ))}
-        </s-choice-list>
-      </s-box>
-    </s-popover>
-  );
+  const visibleRows = rows
+    .filter((r) => {
+      const t = new Date(r.sessionStartsAt).getTime();
+      if (scope === "upcoming") return t >= now;
+      if (scope === "past") return t < now;
+      return true;
+    })
+    .filter((r) =>
+      q
+        ? [r.classTitle, r.customerName, r.email, r.orderName].some((v) =>
+            v?.toLowerCase().includes(q),
+          )
+        : true,
+    )
+    .sort((a, b) => {
+      const dir = sortDir === "asc" ? 1 : -1;
+      if (sortField === "classDate") {
+        return (
+          dir *
+          (new Date(a.sessionStartsAt).getTime() -
+            new Date(b.sessionStartsAt).getTime())
+        );
+      }
+      const pick = (r: BookingTableRow) =>
+        (sortField === "class"
+          ? r.classTitle
+          : sortField === "customer"
+            ? r.customerName
+            : r.locationName) ?? "";
+      return dir * pick(a).localeCompare(pick(b));
+    });
 
   return (
     <s-page heading="Bookings">
-      <s-box paddingBlockEnd="base">
-        {scopeButton}
-        {scopePopover}
-      </s-box>
       {rows.length === 0 ? (
         <s-section>
-          <s-paragraph>{emptyMessage(activeScope)}</s-paragraph>
+          <s-paragraph>{emptyMessage(scope)}</s-paragraph>
         </s-section>
       ) : (
         <s-section padding="none">
           <s-table>
-            <s-search-field
-              slot="filters"
-              label="Search bookings"
-              labelAccessibilityVisibility="exclusive"
-              placeholder="Search by class, customer, or order"
-              value={query}
-              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-            />
+            <s-stack slot="filters" direction="block" gap="small-200">
+              <s-grid
+                gap="small-200"
+                gridTemplateColumns="auto auto"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <s-stack direction="inline" alignItems="center">
+                  <s-clickable
+                    commandFor="bookings-scope-popover"
+                    paddingInline="small-200"
+                    paddingBlock="small-400"
+                    borderRadius="base"
+                  >
+                    <s-stack direction="inline" gap="small-400" alignItems="center">
+                      <s-text>{activeLabel}</s-text>
+                      <s-icon type="select" />
+                    </s-stack>
+                  </s-clickable>
+                  <s-popover
+                    id="bookings-scope-popover"
+                    onAfterShow={() => setScopeMenuReady(true)}
+                    onAfterHide={() => setScopeMenuReady(false)}
+                  >
+                    <s-box padding="small-400">
+                      <div
+                        style={{
+                          opacity: scopeMenuReady ? 1 : 0,
+                        }}
+                      >
+                        <s-stack direction="block" gap="small-500">
+                        {SCOPE_OPTIONS.map((option) => {
+                          const selected = option.scope === scope;
+                          return (
+                            <s-clickable
+                              key={option.scope}
+                              commandFor="bookings-scope-popover"
+                              command="--hide"
+                              onClick={() => {
+                                setScope(option.scope);
+                                revalidator.revalidate();
+                              }}
+                              paddingInline="small-200"
+                              paddingBlock="small-400"
+                              borderRadius="base"
+                            >
+                              <span className={styles.scopeOption}>
+                                <span
+                                  className={`${styles.scopeCheck}${
+                                    selected ? ` ${styles.scopeCheckSelected}` : ""
+                                  }`}
+                                >
+                                  <s-icon
+                                    type="check"
+                                    color={selected ? undefined : "subdued"}
+                                  />
+                                </span>
+                                <span
+                                  className={
+                                    selected ? styles.scopeLabelSelected : undefined
+                                  }
+                                >
+                                  {option.label}
+                                </span>
+                              </span>
+                            </s-clickable>
+                          );
+                        })}
+                        </s-stack>
+                      </div>
+                    </s-box>
+                  </s-popover>
+                </s-stack>
+                <s-stack direction="inline" gap="small-200" alignItems="center">
+                  {revalidator.state === "loading" ? (
+                    <s-spinner accessibilityLabel="Refreshing bookings" size="base" />
+                  ) : null}
+                  <s-button
+                    icon="search"
+                    variant="tertiary"
+                    accessibilityLabel="Search"
+                    onClick={() => {
+                      setSearchOpen((open) => !open);
+                      setQuery("");
+                    }}
+                  />
+                  <s-button
+                    icon="sort"
+                    variant="tertiary"
+                    accessibilityLabel="Sort"
+                    commandFor="bookings-sort-popover"
+                  />
+                  <s-popover id="bookings-sort-popover">
+                    <s-stack direction="block" gap="none">
+                      <s-box padding="small">
+                        <s-choice-list
+                          label="Sort by"
+                          name="bookings-sort-by"
+                          values={[sortField]}
+                          onChange={(event) => {
+                            const next = event.currentTarget.values[0];
+                            if (next) setSortField(next as SortField);
+                          }}
+                        >
+                          {SORT_OPTIONS.map((option) => (
+                            <s-choice key={option.field} value={option.field}>
+                              {option.label}
+                            </s-choice>
+                          ))}
+                        </s-choice-list>
+                      </s-box>
+                      <s-divider />
+                      <s-box padding="small">
+                        <s-choice-list
+                          label="Order by"
+                          name="bookings-order-by"
+                          values={[sortDir]}
+                          onChange={(event) => {
+                            const next = event.currentTarget.values[0];
+                            if (next === "asc" || next === "desc") setSortDir(next);
+                          }}
+                        >
+                          <s-choice value="asc">
+                            {isDateSort ? "Oldest first" : "A–Z"}
+                          </s-choice>
+                          <s-choice value="desc">
+                            {isDateSort ? "Newest first" : "Z–A"}
+                          </s-choice>
+                        </s-choice-list>
+                      </s-box>
+                    </s-stack>
+                  </s-popover>
+                </s-stack>
+              </s-grid>
+              {searchOpen ? (
+                <s-search-field
+                  label="Search bookings"
+                  labelAccessibilityVisibility="exclusive"
+                  placeholder="Search by class, customer, or order"
+                  value={query}
+                  onInput={(event) =>
+                    setQuery((event.target as HTMLInputElement).value)
+                  }
+                />
+              ) : null}
+            </s-stack>
             <s-table-header-row>
               <s-table-header listSlot="primary">Class</s-table-header>
               <s-table-header listSlot="labeled">Class date</s-table-header>
@@ -293,10 +411,6 @@ export default function Bookings() {
       )}
     </s-page>
   );
-}
-
-function parseScope(value: string | null): Scope | null {
-  return SCOPE_OPTIONS.find((option) => option.scope === value)?.scope ?? null;
 }
 
 function emptyMessage(scope: Scope): string {
