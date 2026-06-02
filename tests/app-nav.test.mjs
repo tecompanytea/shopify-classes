@@ -21,20 +21,24 @@ const embeddedAdminUrl = await readFile(
 
 test("app nav keeps /app as the hidden Shopify home route", () => {
   const hiddenHomeLink = appRoute.match(
-    /<Link\s+([^>]*\bto=\{homeHref\}[^>]*)>\s*Home\s*<\/Link>/s,
+    /<a\s+([^>]*\bhref="\/app"[^>]*)>\s*Home\s*<\/a>/s,
   );
   assert.ok(hiddenHomeLink, "expected a hidden Shopify home link for /app");
   assert.match(hiddenHomeLink[1], /\brel="home"/);
-  assert.match(appRoute, /embeddedAppPath\(\s*"\/app",\s*session\.shop/s);
+  assert.doesNotMatch(
+    appRoute,
+    /homeHref|embeddedAppPath/,
+    "App Bridge app-nav expects a relative app path, not a generated auth URL",
+  );
 
   assert.doesNotMatch(
     appRoute,
-    /<Link\s+[^>]*\bto="\/app"[^>]*>\s*Bookings\s*<\/Link>/s,
+    /<a\s+[^>]*\bhref="\/app"[^>]*>\s*Bookings\s*<\/a>/s,
     "Bookings should not be a visible app nav item",
   );
 
   const visibleEventsLink = appRoute.match(
-    /<Link\s+([^>]*\bto="\/app\/classes"[^>]*)>\s*Events\s*<\/Link>/s,
+    /<a\s+([^>]*\bhref="\/app\/classes"[^>]*)>\s*Events\s*<\/a>/s,
   );
   assert.ok(visibleEventsLink, "expected a visible Events link");
   assert.doesNotMatch(visibleEventsLink[1], /\brel="home"/);

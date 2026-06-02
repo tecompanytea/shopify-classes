@@ -1,35 +1,28 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Link, Outlet, useLoaderData, useRouteError } from "react-router";
+import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
-import { embeddedAppPath } from "../lib/embedded-admin-url";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const url = new URL(request.url);
+  await authenticate.admin(request);
   return {
     apiKey: process.env.SHOPIFY_API_KEY || "",
-    homeHref: embeddedAppPath(
-      "/app",
-      session.shop,
-      url.searchParams.get("host") ?? undefined,
-    ),
   };
 };
 
 export default function App() {
-  const { apiKey, homeHref } = useLoaderData<typeof loader>();
+  const { apiKey } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <NavMenu>
-        <Link to={homeHref} rel="home">Home</Link>
-        <Link to="/app/classes">Events</Link>
-        <Link to="/app/locations">Locations</Link>
-        <Link to="/app/settings">Settings</Link>
+        <a href="/app" rel="home">Home</a>
+        <a href="/app/classes">Events</a>
+        <a href="/app/locations">Locations</a>
+        <a href="/app/settings">Settings</a>
       </NavMenu>
       <Outlet />
     </AppProvider>
