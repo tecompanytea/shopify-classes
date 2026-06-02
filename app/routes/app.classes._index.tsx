@@ -17,11 +17,13 @@ type ClassRow = {
   sessionCount: number;
   upcomingSessionCount: number;
   nextSessionAt: string | null;
+  href: string;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   await getOrCreateShopSettings(session.shop);
+  const appBaseHref = shopifyAdminAppHref(session.shop);
 
   const classes = await db.classProduct.findMany({
     where: { shop: session.shop },
@@ -49,36 +51,39 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       sessionCount: c.sessions.length,
       upcomingSessionCount: upcoming.length,
       nextSessionAt: upcoming[0]?.startsAt.toISOString() ?? null,
+      href: `${appBaseHref}/app/classes/${c.id}`,
     };
   });
 
-  return { rows };
+  return { rows, createEventHref: `${appBaseHref}/app/classes/new` };
 };
 
-export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);
+export const headers: HeadersFunction = (headersArgs) =>
+  boundary.headers(headersArgs);
 
 export function ErrorBoundary() {
   return boundary.error(useRouteError());
 }
 
 export default function ClassesIndex() {
-  const { rows } = useLoaderData<typeof loader>();
+  const { rows, createEventHref } = useLoaderData<typeof loader>();
 
   return (
     <s-page heading="Events" back-href="/app">
       {rows.length > 0 && (
-        <s-button slot="primary-action" href="/app/classes/new" variant="primary">
+        <s-button
+          slot="primary-action"
+          href={createEventHref}
+          target="_top"
+          variant="primary"
+        >
           Create event
         </s-button>
       )}
 
       {rows.length === 0 ? (
         <s-section accessibilityLabel="Empty state section">
-          <s-grid
-            gap="base"
-            justifyItems="center"
-            paddingBlock="base"
-          >
+          <s-grid gap="base" justifyItems="center" paddingBlock="base">
             <s-box maxInlineSize="280px" maxBlockSize="210px">
               <s-image
                 src="/te-classes-empty-state.jpg"
@@ -92,12 +97,12 @@ export default function ClassesIndex() {
               <s-stack direction="block" alignItems="center" gap="base">
                 <s-heading>Set up your first event</s-heading>
                 <s-paragraph>
-                  Pick an existing Shopify product, add dates, capacity,
-                  and location. Customers can then view real-time
-                  event availability and check out through Shopify.
+                  Pick an existing Shopify product, add dates, capacity, and
+                  location. Customers can then view real-time event availability
+                  and check out through Shopify.
                 </s-paragraph>
               </s-stack>
-              <s-button href="/app/classes/new" variant="primary">
+              <s-button href={createEventHref} target="_top" variant="primary">
                 Create event
               </s-button>
             </s-grid>
@@ -110,7 +115,9 @@ export default function ClassesIndex() {
               <s-table-header listSlot="primary">Event</s-table-header>
               <s-table-header listSlot="inline">Status</s-table-header>
               <s-table-header listSlot="secondary">Location</s-table-header>
-              <s-table-header format="numeric" listSlot="labeled">Upcoming</s-table-header>
+              <s-table-header format="numeric" listSlot="labeled">
+                Upcoming
+              </s-table-header>
               <s-table-header listSlot="labeled">Next session</s-table-header>
             </s-table-header-row>
             <s-table-body>
@@ -120,12 +127,14 @@ export default function ClassesIndex() {
                 return (
                   <s-table-row key={row.id} clickDelegate={classLinkId}>
                     <s-table-cell>
-                      <s-link id={classLinkId} href={`/app/classes/${row.id}`}>
+                      <s-link id={classLinkId} href={row.href} target="_top">
                         {row.title}
                       </s-link>
                     </s-table-cell>
                     <s-table-cell>
-                      <s-badge tone={row.status === "active" ? "success" : undefined}>
+                      <s-badge
+                        tone={row.status === "active" ? "success" : undefined}
+                      >
                         {row.status}
                       </s-badge>
                     </s-table-cell>
@@ -133,14 +142,17 @@ export default function ClassesIndex() {
                     <s-table-cell>{row.upcomingSessionCount}</s-table-cell>
                     <s-table-cell>
                       {row.nextSessionAt
-                        ? new Date(row.nextSessionAt).toLocaleString(undefined, {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                            timeZone: CLASS_TIMEZONE,
-                          })
+                        ? new Date(row.nextSessionAt).toLocaleString(
+                            undefined,
+                            {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              timeZone: CLASS_TIMEZONE,
+                            },
+                          )
                         : "-"}
                     </s-table-cell>
                   </s-table-row>
@@ -152,4 +164,10 @@ export default function ClassesIndex() {
       )}
     </s-page>
   );
+}
+
+function shopifyAdminAppHref(shop: string): string {
+  const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
+  const appHandle = process.env.SHOPIFY_APP_HANDLE || "classes";
+  return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`;
 }
