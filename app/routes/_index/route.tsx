@@ -2,18 +2,24 @@ import type { LoaderFunctionArgs } from "react-router";
 import { redirect, Form, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
+import db from "../../db.server";
+import { embeddedAppPath } from "../../lib/embedded-admin-url";
 
 import styles from "./styles.module.css";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
+  if (url.searchParams.get("appLoadId")) {
+    const shop = await findInstalledShop();
+    if (shop) throw redirect(embeddedAppPath("/app", shop));
+  }
+
   const hasEmbeddedContext =
     Boolean(url.searchParams.get("host")) ||
     url.searchParams.get("embedded") === "1" ||
     Boolean(url.searchParams.get("id_token")) ||
-    Boolean(url.searchParams.get("shop")) ||
-    Boolean(url.searchParams.get("appLoadId"));
+    Boolean(url.searchParams.get("shop"));
 
   if (hasEmbeddedContext) {
     throw redirect(`/app?${url.searchParams.toString()}`);
@@ -21,6 +27,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return { showForm: Boolean(login) };
 };
+
+async function findInstalledShop() {
+  const offlineSession = await db.session.findFirst({
+    where: { isOnline: false },
+    select: { shop: true },
+  });
+  if (offlineSession?.shop) return offlineSession.shop;
+
+  const anySession = await db.session.findFirst({
+    select: { shop: true },
+  });
+  return anySession?.shop ?? null;
+}
 
 export default function App() {
   const { showForm } = useLoaderData<typeof loader>();
