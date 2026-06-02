@@ -88,6 +88,53 @@ export async function createSessionVariants(
   }));
 }
 
+// Updates an existing session variant's date — the "Session" option value (the
+// human-readable title customers see) and its SKU. Used when a merchant edits a
+// session's date/time after creation. Shopify still enforces unique option-value
+// tuples, so editing to a date that already exists on the product fails loudly.
+export async function updateSessionVariant(
+  admin: AdminApiContext,
+  {
+    productGid,
+    variantId,
+    displayName,
+    sku,
+  }: { productGid: string; variantId: string; displayName: string; sku: string },
+): Promise<void> {
+  const response = await admin.graphql(
+    `#graphql
+      mutation UpdateSessionVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants { id sku title }
+          userErrors { field message }
+        }
+      }
+    `,
+    {
+      variables: {
+        productId: productGid,
+        variants: [
+          {
+            id: variantId,
+            optionValues: [{ optionName: "Session", name: displayName }],
+            inventoryItem: { sku },
+          },
+        ],
+      },
+    },
+  );
+
+  const body = await response.json();
+  const errors = body?.data?.productVariantsBulkUpdate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(
+      `productVariantsBulkUpdate: ${errors
+        .map((e: { field?: string[]; message: string }) => `${e.field?.join(".") ?? ""} ${e.message}`)
+        .join("; ")}`,
+    );
+  }
+}
+
 export async function deleteVariants(
   admin: AdminApiContext,
   { productGid, variantIds }: { productGid: string; variantIds: string[] },

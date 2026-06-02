@@ -20,6 +20,7 @@ import {
   createSessionVariants,
   deleteVariants,
   setInventoryAtLocation,
+  updateSessionVariant,
   type SessionDraft,
 } from "../.server/shopify/variants";
 import {
@@ -105,6 +106,10 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
       };
     });
 
+    if (drafts.some((d) => Number.isNaN(d.startsAt.getTime()))) {
+      return { error: "One or more sessions has an invalid time. Use 24-hour HH:MM (e.g. 09:30)." };
+    }
+
     await ensureSessionDateOption(admin, classProduct.productGid);
     const currencyCode = await getShopCurrency(admin);
     const created = await createSessionVariants(admin, {
@@ -160,6 +165,41 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<A
     return { ok: true, message: "Session removed." };
   }
 
+  if (intent === "edit-session") {
+    const sessionId = String(form.get("sessionId") ?? "");
+    const date = String(form.get("date") ?? "");
+    const time = String(form.get("time") ?? "");
+    const target = await db.classSession.findFirst({
+      where: { id: sessionId, classProductId: classProduct.id },
+    });
+    if (!target) return { error: "Session not found." };
+
+    const startsAt = DateTime.fromISO(`${date}T${time}`, { zone: CLASS_TIMEZONE });
+    if (!startsAt.isValid) {
+      return { error: "Enter a valid date and 24-hour time (e.g. 09:30)." };
+    }
+    const endsAt = startsAt.plus({ minutes: classProduct.durationMin });
+    const startsAtIso = startsAt.toISO()!;
+    const sku = generateSessionSku(classProduct.title, startsAtIso, CLASS_TIMEZONE);
+    const displayName = formatSessionTitle(startsAtIso, CLASS_TIMEZONE);
+
+    // Update Shopify first; if it fails (e.g. duplicate date) we surface the
+    // error and leave the local row untouched.
+    await updateSessionVariant(admin, {
+      productGid: classProduct.productGid,
+      variantId: target.variantGid,
+      displayName,
+      sku,
+    });
+
+    await db.classSession.update({
+      where: { id: target.id },
+      data: { startsAt: startsAt.toJSDate(), endsAt: endsAt.toJSDate(), sku },
+    });
+
+    return { ok: true, message: "Session updated." };
+  }
+
   if (intent === "archive-class") {
     await db.classProduct.update({
       where: { id },
@@ -196,7 +236,7 @@ export default function ClassDetail() {
         <s-banner tone="critical">{actionData.error}</s-banner>
       )}
 
-      <SessionsCard classProduct={classProduct} />
+      <SessionsCard classProduct={classProduct} busy={busy} />
       <AddSessionsCard shopifyLocations={shopifyLocations} busy={busy} />
 
       <DefaultsCard classProduct={classProduct} locations={locations} busy={busy} />
@@ -247,7 +287,13 @@ function DefaultsCard({
   );
 }
 
-function SessionsCard({ classProduct }: { classProduct: ClassProductWith }) {
+function SessionsCard({
+  classProduct,
+  busy,
+}: {
+  classProduct: ClassProductWith;
+  busy: boolean;
+}) {
   const now = new Date();
   const sessions = [...classProduct.sessions].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -271,6 +317,9 @@ function SessionsCard({ classProduct }: { classProduct: ClassProductWith }) {
               const iso =
                 typeof s.startsAt === "string" ? s.startsAt : s.startsAt.toISOString();
               const title = formatSessionTitle(iso, CLASS_TIMEZONE);
+              const editDt = DateTime.fromISO(iso, { zone: CLASS_TIMEZONE });
+              const editDate = editDt.toFormat("yyyy-LL-dd");
+              const editTime = editDt.toFormat("HH:mm");
               const upcoming = !s.cancelled && new Date(iso) > now;
               return (
                 <s-table-row key={s.id}>
@@ -287,17 +336,26 @@ function SessionsCard({ classProduct }: { classProduct: ClassProductWith }) {
                   <s-table-cell>{s.capacity}</s-table-cell>
                   <s-table-cell>{s.sku}</s-table-cell>
                   <s-table-cell>
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="remove-session" />
-                      <input type="hidden" name="sessionId" value={s.id} />
-                      <s-button
-                        type="submit"
-                        tone="critical"
-                        variant="tertiary"
-                        icon="delete"
-                        accessibilityLabel={`Remove ${title}`}
+                    <s-stack direction="inline" gap="small-200">
+                      <EditSessionPopover
+                        sessionId={s.id}
+                        title={title}
+                        defaultDate={editDate}
+                        defaultTime={editTime}
+                        busy={busy}
                       />
-                    </Form>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="remove-session" />
+                        <input type="hidden" name="sessionId" value={s.id} />
+                        <s-button
+                          type="submit"
+                          tone="critical"
+                          variant="tertiary"
+                          icon="delete"
+                          accessibilityLabel={`Remove ${title}`}
+                        />
+                      </Form>
+                    </s-stack>
                   </s-table-cell>
                 </s-table-row>
               );
@@ -417,6 +475,66 @@ function DangerZone({ busy }: { busy: boolean }) {
         </s-button>
       </Form>
     </s-section>
+  );
+}
+
+// Per-row edit control: an icon button that toggles a popover with date + time
+// fields. Submitting posts the `edit-session` intent, which re-dates the Shopify
+// variant and the local session. Date/time are held in state and mirrored into
+// hidden inputs so submission doesn't depend on web-component form wiring.
+function EditSessionPopover({
+  sessionId,
+  title,
+  defaultDate,
+  defaultTime,
+  busy,
+}: {
+  sessionId: string;
+  title: string;
+  defaultDate: string;
+  defaultTime: string;
+  busy: boolean;
+}) {
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(defaultTime);
+
+  return (
+    <>
+      <s-button
+        variant="tertiary"
+        icon="edit"
+        command="--toggle"
+        commandFor={`edit-${sessionId}`}
+        accessibilityLabel={`Edit ${title}`}
+      />
+      <s-popover id={`edit-${sessionId}`} minInlineSize="260px">
+        <s-box padding="base">
+          <Form method="post">
+            <input type="hidden" name="intent" value="edit-session" />
+            <input type="hidden" name="sessionId" value={sessionId} />
+            <input type="hidden" name="date" value={date} />
+            <input type="hidden" name="time" value={time} />
+            <s-stack direction="block" gap="base">
+              <s-date-field
+                label="Date"
+                value={date}
+                onChange={(e) => setDate((e.target as HTMLInputElement).value)}
+              />
+              <s-text-field
+                label="Start time"
+                placeholder="15:00"
+                details="24-hour, e.g. 09:30"
+                value={time}
+                onChange={(e) => setTime((e.target as HTMLInputElement).value)}
+              />
+              <s-button type="submit" variant="primary" loading={busy ? true : undefined}>
+                Save
+              </s-button>
+            </s-stack>
+          </Form>
+        </s-box>
+      </s-popover>
+    </>
   );
 }
 
