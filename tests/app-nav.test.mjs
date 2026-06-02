@@ -47,6 +47,8 @@ test("app home uses the app label instead of Bookings", () => {
 
 test("Shopify app home clicks with appLoadId redirect into the embedded app", () => {
   assert.match(publicRootRoute, /url\.searchParams\.get\("appLoadId"\)/);
+  assert.match(publicRootRoute, /shopFromAdminReferer\(request\.headers\.get\("referer"\)\)/);
+  assert.match(publicRootRoute, /configuredShop\(\)/);
   assert.match(publicRootRoute, /findInstalledShop\(\)/);
   assert.match(publicRootRoute, /redirect\(embeddedAppPath\("\/app", shop\)\)/);
   assert.doesNotMatch(
@@ -62,4 +64,7 @@ test("embedded app paths include the Shopify auth context required for document 
   assert.match(embeddedAdminUrl, /params\.set\("shop", shop\)/);
   assert.match(embeddedAdminUrl, /params\.set\("host", hostParam/);
   assert.match(embeddedAdminUrl, /params\.set\("embedded", "1"\)/);
+  assert.match(embeddedAdminUrl, /shopFromAdminReferer/);
+  assert.match(embeddedAdminUrl, /chooseInstalledShop/);
+  assert.match(embeddedAdminUrl, /!shop\.toLowerCase\(\)\.includes\("dev"\)/);
 });

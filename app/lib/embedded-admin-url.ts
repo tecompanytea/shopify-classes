@@ -16,3 +16,39 @@ export function shopifyAdminHostParam(shop: string) {
     "base64",
   );
 }
+
+export function shopFromAdminReferer(referer: string | null) {
+  if (!referer) return null;
+
+  let url: URL;
+  try {
+    url = new URL(referer);
+  } catch {
+    return null;
+  }
+
+  if (url.hostname !== "admin.shopify.com") return null;
+
+  const storeHandle = url.pathname.match(/\/store\/([^/]+)/)?.[1];
+  if (!storeHandle) return null;
+
+  return `${decodeURIComponent(storeHandle)}.myshopify.com`;
+}
+
+export function configuredShop() {
+  return (
+    process.env.SHOPIFY_SHOP_DOMAIN ||
+    process.env.SHOPIFY_STORE_DOMAIN ||
+    process.env.SHOPIFY_SHOP ||
+    null
+  );
+}
+
+export function chooseInstalledShop(shops: string[]) {
+  const uniqueShops = [...new Set(shops.filter(Boolean))];
+  return (
+    uniqueShops.find((shop) => !shop.toLowerCase().includes("dev")) ||
+    uniqueShops[0] ||
+    null
+  );
+}

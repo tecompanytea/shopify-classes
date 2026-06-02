@@ -3,7 +3,12 @@ import { redirect, Form, useLoaderData } from "react-router";
 
 import { login } from "../../shopify.server";
 import db from "../../db.server";
-import { embeddedAppPath } from "../../lib/embedded-admin-url";
+import {
+  chooseInstalledShop,
+  configuredShop,
+  embeddedAppPath,
+  shopFromAdminReferer,
+} from "../../lib/embedded-admin-url";
 
 import styles from "./styles.module.css";
 
@@ -11,7 +16,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
   if (url.searchParams.get("appLoadId")) {
-    const shop = await findInstalledShop();
+    const shop =
+      shopFromAdminReferer(request.headers.get("referer")) ||
+      configuredShop() ||
+      (await findInstalledShop());
     if (shop) throw redirect(embeddedAppPath("/app", shop));
   }
 
@@ -29,16 +37,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 async function findInstalledShop() {
-  const offlineSession = await db.session.findFirst({
+  const offlineSessions = await db.session.findMany({
     where: { isOnline: false },
     select: { shop: true },
   });
-  if (offlineSession?.shop) return offlineSession.shop;
+  const offlineShop = chooseInstalledShop(offlineSessions.map((s) => s.shop));
+  if (offlineShop) return offlineShop;
 
-  const anySession = await db.session.findFirst({
+  const sessions = await db.session.findMany({
     select: { shop: true },
   });
-  return anySession?.shop ?? null;
+  return chooseInstalledShop(sessions.map((s) => s.shop));
 }
 
 export default function App() {
