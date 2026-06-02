@@ -4,9 +4,15 @@
    hover into a shadow root — so we style a plain element and delegate the
    click to a visually hidden s-link that performs the shopify:// navigation. */
 .orderNumber {
+  background: none;
+  border: 0;
+  color: inherit;
   cursor: pointer;
   display: inline-block;
+  font: inherit;
   font-weight: 600;
+  margin: 0;
+  padding: 0;
 }
 
 .orderNumber:hover {

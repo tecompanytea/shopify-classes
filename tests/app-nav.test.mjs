@@ -6,17 +6,32 @@ const appRoute = await readFile(
   new URL("../app/routes/app.tsx", import.meta.url),
   "utf8",
 );
+const homeRoute = await readFile(
+  new URL("../app/routes/app._index.tsx", import.meta.url),
+  "utf8",
+);
 
-test("app nav keeps the Shopify home route hidden and Bookings visible", () => {
+test("app nav keeps /app as the hidden Shopify home route", () => {
   const hiddenHomeLink = appRoute.match(
     /<Link\s+([^>]*\bto="\/app"[^>]*)>\s*Home\s*<\/Link>/s,
   );
   assert.ok(hiddenHomeLink, "expected a hidden Shopify home link for /app");
   assert.match(hiddenHomeLink[1], /\brel="home"/);
 
-  const visibleBookingsLink = appRoute.match(
-    /<Link\s+([^>]*\bto="\/app"[^>]*)>\s*Bookings\s*<\/Link>/s,
+  assert.doesNotMatch(
+    appRoute,
+    /<Link\s+[^>]*\bto="\/app"[^>]*>\s*Bookings\s*<\/Link>/s,
+    "Bookings should not be a visible app nav item",
   );
-  assert.ok(visibleBookingsLink, "expected a visible Bookings link for /app");
-  assert.doesNotMatch(visibleBookingsLink[1], /\brel="home"/);
+
+  const visibleEventsLink = appRoute.match(
+    /<Link\s+([^>]*\bto="\/app\/classes"[^>]*)>\s*Events\s*<\/Link>/s,
+  );
+  assert.ok(visibleEventsLink, "expected a visible Events link");
+  assert.doesNotMatch(visibleEventsLink[1], /\brel="home"/);
+});
+
+test("app home uses the app label instead of Bookings", () => {
+  assert.match(homeRoute, /<s-page heading="Classes">/);
+  assert.doesNotMatch(homeRoute, /<s-page heading="Bookings">/);
 });

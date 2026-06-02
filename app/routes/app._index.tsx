@@ -135,7 +135,7 @@ export default function Bookings() {
     });
 
   return (
-    <s-page heading="Bookings">
+    <s-page heading="Classes">
       {rows.length === 0 ? (
         <s-section>
           <s-paragraph>{emptyMessage(scope)}</s-paragraph>
@@ -306,14 +306,15 @@ export default function Bookings() {
                     {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
                   </s-table-cell>
                   <s-table-cell>
-                    <div
+                    <button
+                      type="button"
                       className={styles.orderNumber}
                       onClick={() =>
                         document.getElementById(`order-link-${i}`)?.click()
                       }
                     >
                       {r.orderName}
-                    </div>
+                    </button>
                     <span className={styles.srOnly}>
                       <s-link
                         id={`order-link-${i}`}
@@ -375,7 +376,6 @@ export default function Bookings() {
                               ) : null}
                               <s-button
                                 variant="secondary"
-                                inlineSize="fill"
                                 href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
                                 target="_top"
                               >
