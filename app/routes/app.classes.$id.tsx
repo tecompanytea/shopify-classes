@@ -672,14 +672,14 @@ function DefaultsCard({
         </s-select>
         <s-grid gridTemplateColumns="1fr 1fr" gap="base">
           <s-number-field
-            label="Duration (minutes)"
+            label="Duration (min)"
             value={durationMin}
             onChange={(e) =>
               setDurationMin((e.target as HTMLInputElement).value)
             }
           />
           <s-number-field
-            label="Default capacity (seats)"
+            label="Capacity (seats)"
             value={defaultCapacity}
             onChange={(e) =>
               setDefaultCapacity((e.target as HTMLInputElement).value)
