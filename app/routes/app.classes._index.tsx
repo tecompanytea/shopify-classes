@@ -71,10 +71,6 @@ export default function ClassesIndex() {
 
   return (
     <s-page heading="Events">
-      <s-link slot="breadcrumb-actions" href="/app">
-        Classes
-      </s-link>
-
       {rows.length > 0 && (
         <s-button
           slot="primary-action"
