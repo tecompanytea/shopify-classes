@@ -72,7 +72,6 @@ export const loader = async ({
 };
 
 type ActionData = { error: string } | { ok: true };
-type ProductMode = "with-product" | "without-product";
 type IncomingSession = {
   startsAt: string;
   capacity?: number;
@@ -89,9 +88,6 @@ export const action = async ({
   const formData = await request.formData();
 
   const eventName = String(formData.get("eventName") ?? "").trim();
-  const productMode = String(
-    formData.get("productMode") ?? "with-product",
-  ) as ProductMode;
   const productGid = String(formData.get("productGid") ?? "");
   const productTitle = String(formData.get("productTitle") ?? "");
   const locationId = String(formData.get("locationId") ?? "");
@@ -104,9 +100,6 @@ export const action = async ({
   const eventTitle = eventName || productTitle;
 
   if (!eventTitle) return { error: "Enter an event name to continue." };
-  if (productMode !== "with-product") {
-    return { error: "Events without products are not ready to create yet." };
-  }
   if (!productGid) return { error: "Pick a product to continue." };
 
   let parsedSessions: IncomingSession[];
@@ -338,7 +331,6 @@ export default function NewClassWizard() {
   const submitting = navigation.state === "submitting";
 
   const [eventName, setEventName] = useState("");
-  const [productMode, setProductMode] = useState<ProductMode>("with-product");
   const [picked, setPicked] = useState<PickedProduct | null>(null);
   const [locationId, setLocationId] = useState(defaults.locationId ?? "");
   const shopifyLocationGid = shopifyLocations[0]?.id ?? "";
@@ -464,7 +456,6 @@ export default function NewClassWizard() {
   }
 
   const eventTitle = eventName.trim();
-  const withProduct = productMode === "with-product";
   const createFormId = "new-event-create-form";
   const displayLocationName =
     locations.find((l) => l.id === locationId)?.name ?? "—";
@@ -475,7 +466,6 @@ export default function NewClassWizard() {
   );
   const readyToCreate = Boolean(
     eventTitle &&
-    withProduct &&
     picked &&
     sessionsPayload.length > 0 &&
     (!hasNewSessions || shopifyLocationGid),
@@ -485,7 +475,7 @@ export default function NewClassWizard() {
     { label: "Name", value: eventTitle || "—" },
     {
       label: "Product",
-      value: withProduct ? (picked?.title ?? "—") : "No product",
+      value: picked?.title ?? "—",
     },
     { label: "Duration", value: `${durationMin} min` },
     { label: "Capacity", value: `${defaultCapacity} seats` },
@@ -544,12 +534,12 @@ export default function NewClassWizard() {
         <s-banner tone="critical">{actionData.error}</s-banner>
       )}
 
-      <s-section heading="Event name">
+      <s-section heading="Internal event name *">
         <s-text-field
-          label="Event name"
+          label="Internal event name"
           labelAccessibilityVisibility="exclusive"
           placeholder="Eg. Tea tasting"
-          details="Enter a name to identify this service."
+          details="Enter a name to identify this event."
           value={eventName}
           required
           onChange={(e) => setEventName((e.target as HTMLInputElement).value)}
@@ -557,130 +547,83 @@ export default function NewClassWizard() {
       </s-section>
 
       <s-section accessibilityLabel="Product connection">
-        <s-choice-list
-          label="Payment option"
-          labelAccessibilityVisibility="exclusive"
-          values={[productMode]}
-          onChange={(e) => {
-            const [value] =
-              (e.currentTarget as HTMLElement & { values?: string[] }).values ??
-              [];
-            setProductMode(
-              value === "without-product" ? "without-product" : "with-product",
-            );
-          }}
+        <s-grid
+          gridTemplateColumns="1fr auto"
+          gap="small-400"
+          alignItems="stretch"
         >
-          <s-choice value="with-product">
-            Create service with product
-            <s-text slot="details">
-              Link this service to a product to enable pricing and payment
-              collection.
-            </s-text>
-          </s-choice>
-        </s-choice-list>
+          <s-search-field
+            label="Search"
+            labelAccessibilityVisibility="exclusive"
+            placeholder="Search products"
+            value=""
+            onInput={openProductPickerFromSearch}
+          />
+          <s-button
+            type="button"
+            variant="secondary"
+            onClick={() => pickProduct()}
+          >
+            Add product
+          </s-button>
+        </s-grid>
 
-        {withProduct && (
-          <s-box paddingBlockStart="small-200">
-            <s-grid
-              gridTemplateColumns="1fr auto"
-              gap="small-400"
-              alignItems="stretch"
-            >
-              <s-search-field
-                label="Search"
-                labelAccessibilityVisibility="exclusive"
-                placeholder="Search products"
-                value=""
-                onInput={openProductPickerFromSearch}
-              />
-              <s-button
-                type="button"
-                variant="secondary"
-                onClick={() => pickProduct()}
+        {picked && (
+          <s-box paddingBlockStart="base">
+            <s-box border="base" borderRadius="base" padding="base">
+              <s-stack
+                direction="inline"
+                alignItems="center"
+                justifyContent="space-between"
+                gap="base"
               >
-                Add product
-              </s-button>
-            </s-grid>
-
-            {picked && (
-              <s-box paddingBlockStart="base">
-                <s-box border="base" borderRadius="base" padding="base">
-                  <s-stack
-                    direction="inline"
-                    alignItems="center"
-                    justifyContent="space-between"
-                    gap="base"
-                  >
-                    <s-stack direction="inline" alignItems="center" gap="base">
-                      {picked.imageUrl ? (
-                        <s-box inlineSize="60px">
-                          <s-image
-                            src={picked.imageUrl}
-                            alt={picked.imageAlt}
-                            aspectRatio="1/1"
-                            objectFit="cover"
-                            borderRadius="base"
-                          />
-                        </s-box>
-                      ) : (
-                        <s-thumbnail alt={picked.imageAlt} size="base" />
-                      )}
-                      <s-stack direction="block" gap="none">
-                        <s-text type="strong">{picked.title}</s-text>
-                        <s-text color="subdued">
-                          {variantSelectionLabel(picked)}
-                        </s-text>
-                      </s-stack>
-                    </s-stack>
-
-                    <s-stack direction="inline" gap="small-400">
-                      <s-button
-                        type="button"
-                        variant="tertiary"
-                        icon="edit"
-                        accessibilityLabel="Change product"
-                        onClick={() => pickProduct()}
+                <s-stack direction="inline" alignItems="center" gap="base">
+                  {picked.imageUrl ? (
+                    <s-box inlineSize="60px">
+                      <s-image
+                        src={picked.imageUrl}
+                        alt={picked.imageAlt}
+                        aspectRatio="1/1"
+                        objectFit="cover"
+                        borderRadius="base"
                       />
-                      <s-button
-                        type="button"
-                        variant="tertiary"
-                        tone="critical"
-                        icon="delete"
-                        accessibilityLabel="Remove product"
-                        onClick={() => {
-                          setPicked(null);
-                          adoptedProductRef.current = null;
-                          setSessions([{ date: todayIso, time: defaultTime }]);
-                        }}
-                      />
-                    </s-stack>
+                    </s-box>
+                  ) : (
+                    <s-thumbnail alt={picked.imageAlt} size="base" />
+                  )}
+                  <s-stack direction="block" gap="none">
+                    <s-text type="strong">{picked.title}</s-text>
+                    <s-text color="subdued">
+                      {variantSelectionLabel(picked)}
+                    </s-text>
                   </s-stack>
-                </s-box>
-              </s-box>
-            )}
+                </s-stack>
+
+                <s-stack direction="inline" gap="small-400">
+                  <s-button
+                    type="button"
+                    variant="tertiary"
+                    icon="edit"
+                    accessibilityLabel="Change product"
+                    onClick={() => pickProduct()}
+                  />
+                  <s-button
+                    type="button"
+                    variant="tertiary"
+                    tone="critical"
+                    icon="delete"
+                    accessibilityLabel="Remove product"
+                    onClick={() => {
+                      setPicked(null);
+                      adoptedProductRef.current = null;
+                      setSessions([{ date: todayIso, time: defaultTime }]);
+                    }}
+                  />
+                </s-stack>
+              </s-stack>
+            </s-box>
           </s-box>
         )}
-
-        <s-choice-list
-          label="Service-only option"
-          labelAccessibilityVisibility="exclusive"
-          values={[productMode]}
-          onChange={(e) => {
-            const [value] =
-              (e.currentTarget as HTMLElement & { values?: string[] }).values ??
-              [];
-            setProductMode(
-              value === "without-product" ? "without-product" : "with-product",
-            );
-          }}
-        >
-          <s-choice value="without-product">
-            Create service without product
-            <s-text slot="details">
-              Select this option when online payments are not required.
-            </s-text>
-          </s-choice>
-        </s-choice-list>
       </s-section>
 
       <s-section heading="Schedule defaults">
@@ -824,7 +767,6 @@ export default function NewClassWizard() {
 
       <Form id={createFormId} method="post">
         <input type="hidden" name="eventName" value={eventTitle} />
-        <input type="hidden" name="productMode" value={productMode} />
         <input type="hidden" name="productGid" value={picked?.id ?? ""} />
         <input type="hidden" name="productTitle" value={picked?.title ?? ""} />
         <input type="hidden" name="locationId" value={locationId} />
