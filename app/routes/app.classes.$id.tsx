@@ -840,7 +840,7 @@ function ShopifyVariantImportCard({
         <s-table-header-row>
           <s-table-header listSlot="primary">Variant</s-table-header>
           <s-table-header listSlot="labeled">Date</s-table-header>
-          <s-table-header listSlot="labeled">Start time</s-table-header>
+          <s-table-header listSlot="labeled">Start time (24h)</s-table-header>
           <s-table-header format="numeric" listSlot="labeled">
             Seats
           </s-table-header>
@@ -868,7 +868,7 @@ function ShopifyVariantImportCard({
               </s-table-cell>
               <s-table-cell>
                 <s-text-field
-                  label="Start time"
+                  label="Start time (24h)"
                   labelAccessibilityVisibility="exclusive"
                   placeholder="15:00"
                   value={row.time}
@@ -944,7 +944,7 @@ function AddSessionsCard({
               }
             />
             <s-text-field
-              label={idx === 0 ? "Start time" : undefined}
+              label={idx === 0 ? "Start time (24h)" : undefined}
               placeholder="15:00"
               value={row.time}
               onChange={(e) =>
@@ -1058,7 +1058,7 @@ function EditSessionPopover({
                 onChange={(e) => setDate((e.target as HTMLInputElement).value)}
               />
               <s-text-field
-                label="Start time"
+                label="Start time (24h)"
                 placeholder="15:00"
                 details="24-hour, e.g. 09:30"
                 value={time}

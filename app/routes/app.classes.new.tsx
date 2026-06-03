@@ -684,7 +684,7 @@ export default function NewClassWizard() {
 
         {adopting && (
           <s-text-field
-            label="Start time (applies to all sessions)"
+            label="Start time (24h, applies to all sessions)"
             placeholder="15:00"
             value={defaultTime}
             onChange={(e) => {
@@ -708,7 +708,7 @@ export default function NewClassWizard() {
                 }
               />
               <s-text-field
-                label={idx === 0 ? "Start time" : undefined}
+                label={idx === 0 ? "Start time (24h)" : undefined}
                 placeholder="15:00"
                 value={row.time}
                 onChange={(e) =>
