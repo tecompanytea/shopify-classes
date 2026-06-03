@@ -1026,111 +1026,108 @@ function AddSessionsCard({
   const enabled = rows.length > 0;
 
   return (
-    <>
-      <s-section heading="Add sessions">
-        <s-stack direction="block" gap="base">
-          <s-stack
-            direction="inline"
-            justifyContent="space-between"
-            alignItems="center"
-          >
-            <s-text>Add session</s-text>
-            <s-switch
-              label="Add session"
-              labelAccessibilityVisibility="exclusive"
-              checked={enabled}
-              onChange={(e) => {
-                const checked = (e.target as HTMLInputElement).checked;
-                setRows((current) =>
-                  checked
-                    ? current.length > 0
-                      ? current
-                      : [buildNewSessionDraftRow()]
-                    : [],
-                );
-              }}
-            />
-          </s-stack>
-
-          {enabled &&
-            rows.map((row, idx) => (
-              <s-grid
-                key={idx}
-                gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
-                gap="base"
-                alignItems="end"
-              >
-                <s-date-field
-                  label={idx === 0 ? "Date" : undefined}
-                  value={row.date}
-                  onChange={(e) =>
-                    setRows((rs) =>
-                      rs.map((r, i) =>
-                        i === idx
-                          ? {
-                              ...r,
-                              date: (e.target as HTMLInputElement).value,
-                            }
-                          : r,
-                      ),
-                    )
-                  }
-                />
-                <s-text-field
-                  label={idx === 0 ? "Start time (24h)" : undefined}
-                  placeholder="15:00"
-                  value={row.time}
-                  onChange={(e) =>
-                    setRows((rs) =>
-                      rs.map((r, i) =>
-                        i === idx
-                          ? {
-                              ...r,
-                              time: (e.target as HTMLInputElement).value,
-                            }
-                          : r,
-                      ),
-                    )
-                  }
-                />
-                <s-button-group accessibilityLabel="Session row actions">
-                  <s-button
-                    slot="secondary-actions"
-                    tone="critical"
-                    onClick={() =>
-                      setRows((rs) => rs.filter((_, i) => i !== idx))
-                    }
-                    disabled={rows.length === 1}
-                  >
-                    Delete
-                  </s-button>
-                </s-button-group>
-              </s-grid>
-            ))}
-
-          {enabled && (
-            <s-button-group accessibilityLabel="Session actions">
-              <s-button
-                slot="secondary-actions"
-                type="button"
-                onClick={() =>
-                  setRows((rs) => [
-                    ...rs,
-                    {
-                      date: rs[rs.length - 1]?.date ?? "",
-                      time: rs[rs.length - 1]?.time ?? "15:00",
-                    },
-                  ])
-                }
-              >
-                Add row
-              </s-button>
-            </s-button-group>
-          )}
+    <s-section heading="Add sessions">
+      <s-stack direction="block" gap="base">
+        <s-stack
+          direction="inline"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <s-text>Add session</s-text>
+          <s-switch
+            label="Add session"
+            labelAccessibilityVisibility="exclusive"
+            checked={enabled}
+            onChange={(e) => {
+              const checked = (e.target as HTMLInputElement).checked;
+              setRows((current) =>
+                checked
+                  ? current.length > 0
+                    ? current
+                    : [buildNewSessionDraftRow()]
+                  : [],
+              );
+            }}
+          />
         </s-stack>
-      </s-section>
-      {enabled && <s-box blockSize="360px" />}
-    </>
+
+        {enabled &&
+          rows.map((row, idx) => (
+            <s-grid
+              key={idx}
+              gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
+              gap="base"
+              alignItems="end"
+            >
+              <s-date-field
+                label={idx === 0 ? "Date" : undefined}
+                value={row.date}
+                onChange={(e) =>
+                  setRows((rs) =>
+                    rs.map((r, i) =>
+                      i === idx
+                        ? {
+                            ...r,
+                            date: (e.target as HTMLInputElement).value,
+                          }
+                        : r,
+                    ),
+                  )
+                }
+              />
+              <s-text-field
+                label={idx === 0 ? "Start time (24h)" : undefined}
+                placeholder="15:00"
+                value={row.time}
+                onChange={(e) =>
+                  setRows((rs) =>
+                    rs.map((r, i) =>
+                      i === idx
+                        ? {
+                            ...r,
+                            time: (e.target as HTMLInputElement).value,
+                          }
+                        : r,
+                    ),
+                  )
+                }
+              />
+              <s-button-group accessibilityLabel="Session row actions">
+                <s-button
+                  slot="secondary-actions"
+                  tone="critical"
+                  onClick={() =>
+                    setRows((rs) => rs.filter((_, i) => i !== idx))
+                  }
+                  disabled={rows.length === 1}
+                >
+                  Delete
+                </s-button>
+              </s-button-group>
+            </s-grid>
+          ))}
+
+        {enabled && (
+          <s-button-group accessibilityLabel="Session actions">
+            <s-button
+              slot="secondary-actions"
+              type="button"
+              onClick={() =>
+                setRows((rs) => [
+                  ...rs,
+                  {
+                    date: rs[rs.length - 1]?.date ?? "",
+                    time: rs[rs.length - 1]?.time ?? "15:00",
+                  },
+                ])
+              }
+            >
+              Add row
+            </s-button>
+          </s-button-group>
+        )}
+      </s-stack>
+    </s-section>
   );
 }
 
