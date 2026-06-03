@@ -31,7 +31,6 @@ import {
   deleteVariants,
   setInventoryAtLocation,
   updateSessionVariant,
-  updateSessionVariants,
   updateVariantSkus,
   type SessionDraft,
 } from "../.server/shopify/variants";
@@ -406,76 +405,6 @@ export const action = async ({
     return { ok: true, message: "Session updated." };
   }
 
-  if (intent === "normalize-session-titles") {
-    const sessions = await db.classSession.findMany({
-      where: { classProductId: classProduct.id, shop: session.shop },
-      orderBy: { startsAt: "asc" },
-    });
-    if (sessions.length === 0) {
-      return { ok: true, message: "No session titles to normalize." };
-    }
-
-    const product = await getProduct(admin, classProduct.productGid);
-    if (!product) return { error: "Shopify product not found." };
-
-    const existingVariantIds = new Set(
-      product.variants.map((variant) => variant.id),
-    );
-    const variants = sessions
-      .filter((classSession) => existingVariantIds.has(classSession.variantGid))
-      .map((classSession) => ({
-        variantId: classSession.variantGid,
-        displayName: formatSessionTitle(
-          classSession.startsAt.toISOString(),
-          CLASS_TIMEZONE,
-        ),
-        sku: classSession.sku,
-      }));
-    const skippedCount = sessions.length - variants.length;
-
-    if (variants.length === 0) {
-      return {
-        ok: true,
-        message:
-          skippedCount > 0
-            ? `No existing Shopify variants to normalize. Skipped ${skippedCount} missing variant${skippedCount === 1 ? "" : "s"}.`
-            : "No session titles to normalize.",
-      };
-    }
-
-    const seenTitles = new Set<string>();
-    for (const variant of variants) {
-      if (seenTitles.has(variant.displayName)) {
-        return {
-          error: `Two sessions would use "${variant.displayName}". Edit one session time before normalizing.`,
-        };
-      }
-      seenTitles.add(variant.displayName);
-    }
-
-    try {
-      const option = await ensureSessionDateOption(
-        admin,
-        classProduct.productGid,
-      );
-      if (!option)
-        return { error: "Couldn't prepare the product date option." };
-
-      await updateSessionVariants(admin, {
-        productGid: classProduct.productGid,
-        variants,
-        option,
-      });
-    } catch (error) {
-      return { error: shopifyMutationError(error) };
-    }
-
-    return {
-      ok: true,
-      message: `Normalized ${variants.length} session title${variants.length === 1 ? "" : "s"}.${skippedCount > 0 ? ` Skipped ${skippedCount} missing variant${skippedCount === 1 ? "" : "s"}.` : ""}`,
-    };
-  }
-
   if (intent === "delete-class") {
     await db.classProduct.delete({ where: { id: classProduct.id } });
     return redirect("/app/classes");
@@ -499,7 +428,6 @@ export default function ClassDetail() {
   const revalidator = useRevalidator();
   const busy = navigation.state !== "idle" || revalidator.state !== "idle";
   const saveFormId = "class-save-form";
-  const normalizeTitlesFormId = "class-normalize-titles-form";
   const deleteFormId = "class-delete-form";
   const [title, setTitle] = useState(classProduct.title);
   const [locationId, setLocationId] = useState(classProduct.locationId ?? "");
@@ -590,11 +518,6 @@ export default function ClassDetail() {
     submitFormById(saveFormId);
   }
 
-  function normalizeSessionTitles() {
-    setShowNoNewClasses(false);
-    submitFormById(normalizeTitlesFormId);
-  }
-
   return (
     <s-page heading={title || classProduct.title} back-href="/app/classes">
       <s-button
@@ -620,9 +543,6 @@ export default function ClassDetail() {
         </s-button>
         <s-button icon="refresh" onClick={refreshClass}>
           Refresh
-        </s-button>
-        <s-button onClick={normalizeSessionTitles}>
-          Normalize variant titles
         </s-button>
         <s-button
           icon="delete"
@@ -671,10 +591,6 @@ export default function ClassDetail() {
           name="sessions"
           value={JSON.stringify(importPayload)}
         />
-      </Form>
-
-      <Form id={normalizeTitlesFormId} method="post">
-        <input type="hidden" name="intent" value="normalize-session-titles" />
       </Form>
 
       <Form id={deleteFormId} method="post">
