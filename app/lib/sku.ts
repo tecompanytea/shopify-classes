@@ -1,22 +1,33 @@
 import { DateTime } from "luxon";
 
-// Generates a deterministic SKU for a class session variant.
-// Format: CLASS-{SLUG}-{YYYYMMDD}-{HHMM}
-// Example: CLASS-BREWING-WORKSHOP-20260523-1500
-export function generateSessionSku(
-  productTitle: string,
-  startsAtIso: string,
-  timezone: string,
-): string {
-  const dt = DateTime.fromISO(startsAtIso, { zone: timezone });
-  const slug = productTitle
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  const date = dt.toFormat("yyyyLLdd");
-  const time = dt.toFormat("HHmm");
-  return `CLASS-${slug}-${date}-${time}`;
+export const CLASS_SESSION_SKU_START = 620001;
+export const CLASS_SESSION_SKU_END = 629999;
+
+export function formatClassSessionSku(value: number): string {
+  if (
+    !Number.isInteger(value) ||
+    value < CLASS_SESSION_SKU_START ||
+    value > CLASS_SESSION_SKU_END
+  ) {
+    throw new Error("Class SKU sequence is exhausted.");
+  }
+  return String(value);
+}
+
+export function parseClassSessionSkuNumber(
+  sku: string | null | undefined,
+): number | null {
+  const value = String(sku ?? "").trim();
+  if (!/^62\d{4}$/.test(value)) return null;
+
+  const number = Number(value);
+  return number >= CLASS_SESSION_SKU_START && number <= CLASS_SESSION_SKU_END
+    ? number
+    : null;
+}
+
+export function isClassSessionSku(sku: string | null | undefined): boolean {
+  return parseClassSessionSkuNumber(sku) !== null;
 }
 
 export function parseSessionSku(

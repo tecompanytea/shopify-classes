@@ -2,8 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
-// Mirrors the human-readable title on our ClassProduct row so the list view
-// doesn't drift from Shopify after a rename.
+// Mirrors Shopify product metadata without changing the internal event name.
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { payload, shop, topic } = await authenticate.webhook(request);
   console.log(`Received ${topic} webhook for ${shop}`);
@@ -17,7 +16,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   await db.classProduct.updateMany({
     where: { shop, productGid },
     data: {
-      title,
+      productTitle: title,
       ...(status ? { status } : {}),
     },
   });

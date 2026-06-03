@@ -20,11 +20,13 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
-import { formatSessionTitle, generateSessionSku } from "../lib/sku";
+import { allocateClassSessionSkus } from "../lib/class-skus.server";
+import { formatSessionTitle } from "../lib/sku";
 import { ensureSessionDateOption } from "../.server/shopify/products";
 import {
   createSessionVariants,
   setInventoryAtLocation,
+  updateVariantSkus,
   type SessionDraft,
 } from "../.server/shopify/variants";
 import {
@@ -121,6 +123,12 @@ export const action = async ({
   // are brand-new dates we create on the product.
   const toLink = parsedSessions.filter((s) => s.variantGid);
   const toCreate = parsedSessions.filter((s) => !s.variantGid);
+  const allocatedSkus = await allocateClassSessionSkus(
+    db,
+    session.shop,
+    parsedSessions.length,
+  );
+  let skuIndex = 0;
 
   // Only creating fresh variants needs an inventory location (we set seats on
   // them). Adopting existing variants leaves their inventory untouched.
@@ -147,7 +155,7 @@ export const action = async ({
         endsAt: endsAt.toJSDate(),
         timezone: CLASS_TIMEZONE,
         capacity: s.capacity ?? defaultCapacity,
-        sku: generateSessionSku(eventTitle, startsAt.toISO()!, CLASS_TIMEZONE),
+        sku: allocatedSkus[skuIndex++],
         displayName: formatSessionTitle(startsAt.toISO()!, CLASS_TIMEZONE),
       };
     });
@@ -194,20 +202,32 @@ export const action = async ({
     });
   }
 
-  // 2) Adopt existing variants by linking them — no Shopify writes.
+  // 2) Adopt existing variants by linking them and normalizing their SKUs.
+  const linkedVariantSkuUpdates: Array<{ variantId: string; sku: string }> = [];
   for (const s of toLink) {
     const startsAt = DateTime.fromISO(s.startsAt, { zone: CLASS_TIMEZONE });
     const endsAt = startsAt.plus({ minutes: durationMin });
+    const sku = allocatedSkus[skuIndex++];
+    linkedVariantSkuUpdates.push({ variantId: s.variantGid!, sku });
     sessionRows.push({
       variantGid: s.variantGid!,
       inventoryItemGid: s.inventoryItemGid ?? null,
-      sku:
-        s.sku ||
-        generateSessionSku(eventTitle, startsAt.toISO()!, CLASS_TIMEZONE),
+      sku,
       startsAt: startsAt.toJSDate(),
       endsAt: endsAt.toJSDate(),
       capacity: s.capacity ?? defaultCapacity,
     });
+  }
+
+  if (linkedVariantSkuUpdates.length > 0) {
+    try {
+      await updateVariantSkus(admin, {
+        productGid,
+        variants: linkedVariantSkuUpdates,
+      });
+    } catch (error) {
+      return { error: shopifyMutationError(error) };
+    }
   }
 
   // 3) Upsert ClassProduct + persist ClassSession rows.
@@ -217,6 +237,7 @@ export const action = async ({
       shop: session.shop,
       productGid,
       title: eventTitle,
+      productTitle: productTitle || null,
       status: "active",
       locationId: locationId || null,
       timezone: CLASS_TIMEZONE,
@@ -229,6 +250,7 @@ export const action = async ({
     },
     update: {
       title: eventTitle,
+      productTitle: productTitle || null,
       status: "active",
       locationId: locationId || null,
       timezone: CLASS_TIMEZONE,
@@ -708,8 +730,8 @@ export default function NewClassWizard() {
             Imported {sessions.filter((s) => s.variantGid).length} existing date
             {sessions.filter((s) => s.variantGid).length === 1 ? "" : "s"} from
             this product. Set the start time and confirm seats, then create.
-            This links the existing variants and will not change your product or
-            its inventory.
+            This links the existing variants, normalizes their SKUs, and will
+            not change inventory.
           </s-banner>
         ) : (
           <s-paragraph>

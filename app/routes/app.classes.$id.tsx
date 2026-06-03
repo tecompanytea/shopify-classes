@@ -20,10 +20,10 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
 import {
-  formatSessionTitle,
-  generateSessionSku,
-  parseSessionSku,
-} from "../lib/sku";
+  allocateClassSessionSkus,
+  buildClassSessionSkuNormalizationPlan,
+} from "../lib/class-skus.server";
+import { formatSessionTitle, parseSessionSku } from "../lib/sku";
 import { parseSessionTitle } from "../lib/parse-session-title";
 import {
   ensureSessionDateOption,
@@ -34,6 +34,7 @@ import {
   deleteVariants,
   setInventoryAtLocation,
   updateSessionVariant,
+  updateVariantSkus,
   type SessionDraft,
 } from "../.server/shopify/variants";
 import {
@@ -109,6 +110,9 @@ export const action = async ({
   if (!classProduct) throw new Response("Not found", { status: 404 });
 
   if (intent === "save-class") {
+    const title = String(form.get("title") ?? classProduct.title).trim();
+    if (!title) return { error: "Enter an event name to continue." };
+
     const locationId = String(form.get("locationId") ?? "") || null;
     const durationMin = Number(
       form.get("durationMin") ?? classProduct.durationMin,
@@ -153,7 +157,7 @@ export const action = async ({
         existingSessions.map((s) => s.variantGid),
       );
 
-      rows = parsed
+      const incomingRows = parsed
         .map((input) => {
           if (!input.variantGid) return null;
           if (!input.startsAt) {
@@ -180,14 +184,6 @@ export const action = async ({
             variantGid: variant.id,
             inventoryItemGid:
               variant.inventoryItemId ?? input.inventoryItemGid ?? null,
-            sku:
-              variant.sku ??
-              input.sku ??
-              generateSessionSku(
-                classProduct.title,
-                startsAt.toISO()!,
-                CLASS_TIMEZONE,
-              ),
             startsAt: startsAt.toJSDate(),
             endsAt: startsAt.plus({ minutes: durationMin }).toJSDate(),
             timezone: CLASS_TIMEZONE,
@@ -196,6 +192,29 @@ export const action = async ({
           };
         })
         .filter((row): row is NonNullable<typeof row> => row !== null);
+
+      const skus = await allocateClassSessionSkus(
+        db,
+        session.shop,
+        incomingRows.length,
+      );
+
+      rows = incomingRows.map((row, index) => ({
+        ...row,
+        sku: skus[index],
+      }));
+
+      try {
+        await updateVariantSkus(admin, {
+          productGid: classProduct.productGid,
+          variants: rows.map((row) => ({
+            variantId: row.variantGid,
+            sku: row.sku,
+          })),
+        });
+      } catch (error) {
+        return { error: shopifyMutationError(error) };
+      }
     }
 
     if (invalidSessionTime) {
@@ -206,6 +225,7 @@ export const action = async ({
       await tx.classProduct.update({
         where: { id },
         data: {
+          title,
           locationId,
           timezone: CLASS_TIMEZONE,
           durationMin,
@@ -243,6 +263,12 @@ export const action = async ({
     if (!Array.isArray(parsed) || parsed.length === 0)
       return { error: "Add at least one session." };
 
+    const skus = await allocateClassSessionSkus(
+      db,
+      session.shop,
+      parsed.length,
+    );
+    let skuIndex = 0;
     const drafts: SessionDraft[] = parsed.map((s) => {
       const startsAt = DateTime.fromISO(s.startsAt, { zone: CLASS_TIMEZONE });
       const endsAt = startsAt.plus({ minutes: classProduct.durationMin });
@@ -251,11 +277,7 @@ export const action = async ({
         endsAt: endsAt.toJSDate(),
         timezone: CLASS_TIMEZONE,
         capacity: s.capacity ?? classProduct.defaultCapacity,
-        sku: generateSessionSku(
-          classProduct.title,
-          startsAt.toISO()!,
-          CLASS_TIMEZONE,
-        ),
+        sku: skus[skuIndex++],
         displayName: formatSessionTitle(startsAt.toISO()!, CLASS_TIMEZONE),
       };
     });
@@ -336,6 +358,49 @@ export const action = async ({
     return { ok: true, message: "Session removed." };
   }
 
+  if (intent === "normalize-skus") {
+    const rows = await db.classSession.findMany({
+      where: { shop: session.shop },
+      include: { classProduct: { select: { productGid: true } } },
+      orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    });
+    const updates = buildClassSessionSkuNormalizationPlan(rows);
+
+    if (updates.length === 0) {
+      return { ok: true, message: "Event SKUs are already normalized." };
+    }
+
+    for (const group of groupSkuUpdatesByProduct(updates)) {
+      for (const chunk of chunkArray(group.updates, 100)) {
+        try {
+          await updateVariantSkus(admin, {
+            productGid: group.productGid,
+            variants: chunk.map((update) => ({
+              variantId: update.variantGid,
+              sku: update.sku,
+            })),
+          });
+        } catch (error) {
+          return { error: shopifyMutationError(error) };
+        }
+
+        await db.$transaction(
+          chunk.map((update) =>
+            db.classSession.update({
+              where: { id: update.id },
+              data: { sku: update.sku },
+            }),
+          ),
+        );
+      }
+    }
+
+    return {
+      ok: true,
+      message: `Normalized ${updates.length} event SKU${updates.length === 1 ? "" : "s"}.`,
+    };
+  }
+
   if (intent === "edit-session") {
     const sessionId = String(form.get("sessionId") ?? "");
     const date = String(form.get("date") ?? "");
@@ -353,11 +418,8 @@ export const action = async ({
     }
     const endsAt = startsAt.plus({ minutes: classProduct.durationMin });
     const startsAtIso = startsAt.toISO()!;
-    const sku = generateSessionSku(
-      classProduct.title,
-      startsAtIso,
-      CLASS_TIMEZONE,
-    );
+    const sku =
+      target.sku || (await allocateClassSessionSkus(db, session.shop, 1))[0];
     const displayName = formatSessionTitle(startsAtIso, CLASS_TIMEZONE);
 
     // Update Shopify first; if it fails (e.g. duplicate date) we surface the
@@ -413,6 +475,8 @@ export default function ClassDetail() {
   const busy = navigation.state !== "idle" || revalidator.state !== "idle";
   const saveFormId = "class-save-form";
   const deleteFormId = "class-delete-form";
+  const normalizeSkusFormId = "class-normalize-skus-form";
+  const [title, setTitle] = useState(classProduct.title);
   const [locationId, setLocationId] = useState(classProduct.locationId ?? "");
   const [durationMin, setDurationMin] = useState(
     String(classProduct.durationMin),
@@ -445,6 +509,7 @@ export default function ClassDetail() {
   );
 
   useEffect(() => {
+    setTitle(classProduct.title);
     setLocationId(classProduct.locationId ?? "");
     setDurationMin(String(classProduct.durationMin));
     setDefaultCapacity(String(classProduct.defaultCapacity));
@@ -453,6 +518,7 @@ export default function ClassDetail() {
     classProduct.durationMin,
     classProduct.id,
     classProduct.locationId,
+    classProduct.title,
   ]);
 
   useEffect(() => {
@@ -500,7 +566,7 @@ export default function ClassDetail() {
   }
 
   return (
-    <s-page heading={classProduct.title} back-href="/app/classes">
+    <s-page heading={title || classProduct.title} back-href="/app/classes">
       <s-button
         slot="primary-action"
         variant="primary"
@@ -524,6 +590,13 @@ export default function ClassDetail() {
         </s-button>
         <s-button icon="refresh" onClick={refreshClass}>
           Refresh
+        </s-button>
+        <s-button
+          icon="reset"
+          commandFor="normalize-skus-modal"
+          command="--show"
+        >
+          Normalize SKUs
         </s-button>
         <s-button
           icon="delete"
@@ -550,6 +623,8 @@ export default function ClassDetail() {
       <AddSessionsCard shopifyLocations={shopifyLocations} busy={busy} />
 
       <DefaultsCard
+        title={title}
+        setTitle={setTitle}
         locations={locations}
         locationId={locationId}
         setLocationId={setLocationId}
@@ -561,6 +636,7 @@ export default function ClassDetail() {
 
       <Form id={saveFormId} method="post">
         <input type="hidden" name="intent" value="save-class" />
+        <input type="hidden" name="title" value={title} />
         <input type="hidden" name="locationId" value={locationId} />
         <input type="hidden" name="durationMin" value={durationMin} />
         <input type="hidden" name="defaultCapacity" value={defaultCapacity} />
@@ -573,6 +649,10 @@ export default function ClassDetail() {
 
       <Form id={deleteFormId} method="post">
         <input type="hidden" name="intent" value="delete-class" />
+      </Form>
+
+      <Form id={normalizeSkusFormId} method="post">
+        <input type="hidden" name="intent" value="normalize-skus" />
       </Form>
 
       <s-modal id="delete-class-modal" heading="Delete event?">
@@ -600,6 +680,31 @@ export default function ClassDetail() {
           Cancel
         </s-button>
       </s-modal>
+
+      <s-modal id="normalize-skus-modal" heading="Normalize SKUs?">
+        <s-stack gap="base">
+          <s-text>
+            This updates existing event session variant SKUs in Shopify to the
+            620001 sequence.
+          </s-text>
+        </s-stack>
+        <s-button
+          slot="primary-action"
+          variant="primary"
+          commandFor="normalize-skus-modal"
+          command="--hide"
+          onClick={() => submitFormById(normalizeSkusFormId)}
+        >
+          Normalize SKUs
+        </s-button>
+        <s-button
+          slot="secondary-actions"
+          commandFor="normalize-skus-modal"
+          command="--hide"
+        >
+          Cancel
+        </s-button>
+      </s-modal>
     </s-page>
   );
 }
@@ -607,6 +712,8 @@ export default function ClassDetail() {
 type ClassProductWith = Awaited<ReturnType<typeof loader>>["classProduct"];
 
 function DefaultsCard({
+  title,
+  setTitle,
   locations,
   locationId,
   setLocationId,
@@ -615,6 +722,8 @@ function DefaultsCard({
   defaultCapacity,
   setDefaultCapacity,
 }: {
+  title: string;
+  setTitle: (value: string) => void;
   locations: { id: string; name: string }[];
   locationId: string;
   setLocationId: (value: string) => void;
@@ -626,6 +735,12 @@ function DefaultsCard({
   return (
     <s-section slot="aside" heading="Event defaults">
       <s-stack direction="block" gap="base">
+        <s-text-field
+          label="Internal event name"
+          value={title}
+          required
+          onChange={(e) => setTitle((e.target as HTMLInputElement).value)}
+        />
         <s-select
           label="Display location"
           value={locationId}
@@ -1084,6 +1199,29 @@ function buildImportCandidates(
 
 function productNumericId(gid: string): string {
   return gid.split("/").pop() ?? "";
+}
+
+function groupSkuUpdatesByProduct<
+  T extends { productGid: string; variantGid: string; sku: string },
+>(updates: T[]): Array<{ productGid: string; updates: T[] }> {
+  const groups = new Map<string, T[]>();
+  for (const update of updates) {
+    const group = groups.get(update.productGid) ?? [];
+    group.push(update);
+    groups.set(update.productGid, group);
+  }
+  return Array.from(groups, ([productGid, grouped]) => ({
+    productGid,
+    updates: grouped,
+  }));
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function shopifyMutationError(error: unknown): string {

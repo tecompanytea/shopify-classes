@@ -35,36 +35,36 @@ model Session {
 
 // Per-shop defaults. Created lazily on first visit to /app.
 model ShopSettings {
-  id              String   @id @default(cuid())
-  shop            String   @unique
-  defaultTimezone String   @default("America/New_York")
-  defaultDurationMin Int   @default(60)
-  defaultCapacity Int      @default(12)
-  defaultLocationId String?
-  defaultLocation Location? @relation(fields: [defaultLocationId], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  shop               String    @unique
+  defaultTimezone    String    @default("America/New_York")
+  defaultDurationMin Int       @default(60)
+  defaultCapacity    Int       @default(12)
+  defaultLocationId  String?
+  defaultLocation    Location? @relation(fields: [defaultLocationId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 // A physical or virtual venue. Independent of Shopify Location (inventory) —
 // this captures the human-facing address that ends up on the product/variant.
 model Location {
-  id          String   @id @default(cuid())
-  shop        String
-  name        String
+  id           String   @id @default(cuid())
+  shop         String
+  name         String
   addressLine1 String?
   addressLine2 String?
-  city        String?
-  region      String?
-  postalCode  String?
-  country     String?
-  timezone    String   @default("America/New_York")
-  archived    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  city         String?
+  region       String?
+  postalCode   String?
+  country      String?
+  timezone     String   @default("America/New_York")
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  classProducts   ClassProduct[]
-  shopSettings    ShopSettings[]
+  classProducts ClassProduct[]
+  shopSettings  ShopSettings[]
 
   @@index([shop])
 }
@@ -72,24 +72,25 @@ model Location {
 // Marks a Shopify product as a "class" and stores the defaults used when
 // authoring new variant-sessions for it.
 model ClassProduct {
-  id            String   @id @default(cuid())
-  shop          String
-  productGid    String   // gid://shopify/Product/...
-  title         String
-  status        String   @default("draft") // draft | active | archived (mirrors Shopify status loosely)
-  locationId    String?
-  location      Location? @relation(fields: [locationId], references: [id])
-  timezone      String   @default("America/New_York")
-  durationMin   Int      @default(60)
-  defaultCapacity Int    @default(12)
+  id                String    @id @default(cuid())
+  shop              String
+  productGid        String // gid://shopify/Product/...
+  title             String // Internal event name used by this app.
+  productTitle      String? // Mirrored Shopify product title for reference.
+  status            String    @default("draft") // draft | active | archived (mirrors Shopify status loosely)
+  locationId        String?
+  location          Location? @relation(fields: [locationId], references: [id])
+  timezone          String    @default("America/New_York")
+  durationMin       Int       @default(60)
+  defaultCapacity   Int       @default(12)
   defaultPriceCents Int?
-  notes         String?
-  tags          String?
-  publishedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  notes             String?
+  tags              String?
+  publishedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  sessions      ClassSession[]
+  sessions ClassSession[]
 
   @@unique([shop, productGid])
   @@index([shop])
@@ -99,21 +100,21 @@ model ClassProduct {
 // We persist the raw start/end + the variant GID so we can render the bookings
 // view without paying for an Admin API call per row.
 model ClassSession {
-  id              String   @id @default(cuid())
-  classProductId  String
-  classProduct    ClassProduct @relation(fields: [classProductId], references: [id], onDelete: Cascade)
-  shop            String
-  variantGid      String   // gid://shopify/ProductVariant/...
+  id               String       @id @default(cuid())
+  classProductId   String
+  classProduct     ClassProduct @relation(fields: [classProductId], references: [id], onDelete: Cascade)
+  shop             String
+  variantGid       String // gid://shopify/ProductVariant/...
   inventoryItemGid String?
-  sku             String
-  startsAt        DateTime
-  endsAt          DateTime
-  timezone        String
-  capacity        Int
-  priceCents      Int?
-  cancelled       Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  sku              String
+  startsAt         DateTime
+  endsAt           DateTime
+  timezone         String
+  capacity         Int
+  priceCents       Int?
+  cancelled        Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@unique([shop, variantGid])
   @@index([classProductId, startsAt])

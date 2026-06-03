@@ -157,6 +157,52 @@ export async function updateSessionVariant(
   }
 }
 
+export async function updateVariantSkus(
+  admin: AdminApiContext,
+  {
+    productGid,
+    variants,
+  }: {
+    productGid: string;
+    variants: Array<{ variantId: string; sku: string }>;
+  },
+): Promise<void> {
+  if (variants.length === 0) return;
+
+  const response = await admin.graphql(
+    `#graphql
+      mutation UpdateVariantSkus($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants { id sku }
+          userErrors { field message }
+        }
+      }
+    `,
+    {
+      variables: {
+        productId: productGid,
+        variants: variants.map((variant) => ({
+          id: variant.variantId,
+          inventoryItem: { sku: variant.sku },
+        })),
+      },
+    },
+  );
+
+  const body = await response.json();
+  const errors = body?.data?.productVariantsBulkUpdate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(
+      `productVariantsBulkUpdate: ${errors
+        .map(
+          (e: { field?: string[]; message: string }) =>
+            `${e.field?.join(".") ?? ""} ${e.message}`,
+        )
+        .join("; ")}`,
+    );
+  }
+}
+
 function buildSessionOptionValues(
   option: SessionDateOption,
   displayName: string,
