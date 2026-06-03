@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -58,6 +64,16 @@ type ImportSessionInput = {
   capacity?: number;
 };
 
+type NewSessionInput = {
+  startsAt?: string | null;
+  capacity?: number;
+};
+
+type NewSessionDraftRow = {
+  date: string;
+  time: string;
+};
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const id = String(params.id);
@@ -91,7 +107,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return { classProduct, locations, shopifyLocations, importCandidates };
 };
 
-type ActionData = { error: string } | { ok: true; message: string };
+type ActionData =
+  | { error: string }
+  | {
+      ok: true;
+      intent: "save-class" | "remove-session" | "edit-session";
+      message: string;
+    };
 
 export const action = async ({
   request,
@@ -127,13 +149,25 @@ export const action = async ({
     if (!Array.isArray(parsed)) {
       return { error: "Couldn't read Shopify variants." };
     }
+    let parsedNewSessions: NewSessionInput[];
+    try {
+      parsedNewSessions = JSON.parse(String(form.get("newSessions") ?? "[]"));
+    } catch {
+      return { error: "Couldn't read new sessions." };
+    }
+    if (!Array.isArray(parsedNewSessions)) {
+      return { error: "Couldn't read new sessions." };
+    }
+    const shopifyLocationGid = String(form.get("shopifyLocationGid") ?? "");
+    if (parsedNewSessions.length > 0 && !shopifyLocationGid) {
+      return { error: "No Shopify inventory location is available." };
+    }
 
-    let rows: Array<{
+    let linkedRows: Array<{
       classProductId: string;
       shop: string;
       variantGid: string;
       inventoryItemGid: string | null;
-      sku: string;
       startsAt: Date;
       endsAt: Date;
       timezone: string;
@@ -155,7 +189,7 @@ export const action = async ({
         existingSessions.map((s) => s.variantGid),
       );
 
-      const incomingRows = parsed
+      linkedRows = parsed
         .map((input) => {
           if (!input.variantGid) return null;
           if (!input.startsAt) {
@@ -190,22 +224,123 @@ export const action = async ({
           };
         })
         .filter((row): row is NonNullable<typeof row> => row !== null);
+    }
 
-      const skus = await allocateClassSessionSkus(
-        db,
-        session.shop,
-        incomingRows.length,
+    const newSessionInputs = parsedNewSessions
+      .map((input) => {
+        if (!input.startsAt) {
+          invalidSessionTime = true;
+          return null;
+        }
+
+        const startsAt = DateTime.fromISO(input.startsAt, {
+          zone: CLASS_TIMEZONE,
+        });
+        if (!startsAt.isValid) {
+          invalidSessionTime = true;
+          return null;
+        }
+
+        const capacity = Number(input.capacity ?? defaultCapacity);
+        return {
+          startsAt,
+          capacity: Number.isFinite(capacity) ? capacity : defaultCapacity,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    if (invalidSessionTime) {
+      return { error: "Enter a valid date and 24-hour time (e.g. 09:30)." };
+    }
+
+    const skus = await allocateClassSessionSkus(
+      db,
+      session.shop,
+      linkedRows.length + newSessionInputs.length,
+    );
+    let skuIndex = 0;
+    const linkedRowsWithSkus = linkedRows.map((row) => ({
+      ...row,
+      sku: skus[skuIndex++],
+    }));
+    const newSessionDrafts: SessionDraft[] = newSessionInputs.map((input) => {
+      const startsAtIso = input.startsAt.toISO()!;
+      return {
+        startsAt: input.startsAt.toJSDate(),
+        endsAt: input.startsAt.plus({ minutes: durationMin }).toJSDate(),
+        timezone: CLASS_TIMEZONE,
+        capacity: input.capacity,
+        sku: skus[skuIndex++],
+        displayName: formatSessionTitle(startsAtIso, CLASS_TIMEZONE),
+      };
+    });
+
+    let createdRows: Array<{
+      classProductId: string;
+      shop: string;
+      variantGid: string;
+      inventoryItemGid: string | null;
+      sku: string;
+      startsAt: Date;
+      endsAt: Date;
+      timezone: string;
+      capacity: number;
+      priceCents: null;
+    }> = [];
+
+    if (newSessionDrafts.length > 0) {
+      let created: Awaited<ReturnType<typeof createSessionVariants>>;
+      try {
+        const option = await ensureSessionDateOption(
+          admin,
+          classProduct.productGid,
+        );
+        if (!option)
+          return { error: "Couldn't prepare the product date option." };
+        const currencyCode = await getShopCurrency(admin);
+        created = await createSessionVariants(admin, {
+          productGid: classProduct.productGid,
+          drafts: newSessionDrafts,
+          currencyCode,
+          option,
+        });
+      } catch (error) {
+        return { error: shopifyMutationError(error) };
+      }
+
+      await Promise.all(
+        created
+          .map((c, idx) =>
+            c.inventoryItemGid
+              ? setInventoryAtLocation(admin, {
+                  inventoryItemGid: c.inventoryItemGid,
+                  locationGid: shopifyLocationGid,
+                  quantity: newSessionDrafts[idx].capacity,
+                })
+              : null,
+          )
+          .filter((p): p is Promise<void> => p !== null),
       );
 
-      rows = incomingRows.map((row, index) => ({
-        ...row,
-        sku: skus[index],
+      createdRows = created.map((c, idx) => ({
+        classProductId: classProduct.id,
+        shop: session.shop,
+        variantGid: c.variantGid,
+        inventoryItemGid: c.inventoryItemGid,
+        sku: c.sku,
+        startsAt: newSessionDrafts[idx].startsAt,
+        endsAt: newSessionDrafts[idx].endsAt,
+        timezone: CLASS_TIMEZONE,
+        capacity: newSessionDrafts[idx].capacity,
+        priceCents: null,
       }));
+    }
 
+    if (linkedRowsWithSkus.length > 0) {
       try {
         await updateVariantSkus(admin, {
           productGid: classProduct.productGid,
-          variants: rows.map((row) => ({
+          variants: linkedRowsWithSkus.map((row) => ({
             variantId: row.variantGid,
             sku: row.sku,
           })),
@@ -215,9 +350,7 @@ export const action = async ({
       }
     }
 
-    if (invalidSessionTime) {
-      return { error: "Enter a valid date and 24-hour time (e.g. 09:30)." };
-    }
+    const rows = [...linkedRowsWithSkus, ...createdRows];
 
     await db.$transaction(async (tx) => {
       await tx.classProduct.update({
@@ -240,105 +373,13 @@ export const action = async ({
       }
     });
 
-    if (rows.length === 0) return { ok: true, message: "Saved." };
+    if (rows.length === 0)
+      return { ok: true, intent: "save-class", message: "Saved." };
 
     return {
       ok: true,
+      intent: "save-class",
       message: `Saved and added ${rows.length} new session${rows.length === 1 ? "" : "s"}.`,
-    };
-  }
-
-  if (intent === "add-sessions") {
-    const shopifyLocationGid = String(form.get("shopifyLocationGid") ?? "");
-    if (!shopifyLocationGid)
-      return { error: "No Shopify inventory location is available." };
-    let parsed: Array<{ startsAt: string; capacity?: number }>;
-    try {
-      parsed = JSON.parse(String(form.get("sessions") ?? "[]"));
-    } catch {
-      return { error: "Couldn't read sessions." };
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0)
-      return { error: "Add at least one session." };
-
-    const skus = await allocateClassSessionSkus(
-      db,
-      session.shop,
-      parsed.length,
-    );
-    let skuIndex = 0;
-    const drafts: SessionDraft[] = parsed.map((s) => {
-      const startsAt = DateTime.fromISO(s.startsAt, { zone: CLASS_TIMEZONE });
-      const endsAt = startsAt.plus({ minutes: classProduct.durationMin });
-      return {
-        startsAt: startsAt.toJSDate(),
-        endsAt: endsAt.toJSDate(),
-        timezone: CLASS_TIMEZONE,
-        capacity: s.capacity ?? classProduct.defaultCapacity,
-        sku: skus[skuIndex++],
-        displayName: formatSessionTitle(startsAt.toISO()!, CLASS_TIMEZONE),
-      };
-    });
-
-    if (drafts.some((d) => Number.isNaN(d.startsAt.getTime()))) {
-      return {
-        error:
-          "One or more sessions has an invalid time. Use 24-hour HH:MM (e.g. 09:30).",
-      };
-    }
-
-    let created: Awaited<ReturnType<typeof createSessionVariants>>;
-    try {
-      const option = await ensureSessionDateOption(
-        admin,
-        classProduct.productGid,
-      );
-      if (!option)
-        return { error: "Couldn't prepare the product date option." };
-      const currencyCode = await getShopCurrency(admin);
-      created = await createSessionVariants(admin, {
-        productGid: classProduct.productGid,
-        drafts,
-        currencyCode,
-        option,
-      });
-    } catch (error) {
-      return { error: shopifyMutationError(error) };
-    }
-
-    await Promise.all(
-      created
-        .map((c, idx) =>
-          c.inventoryItemGid
-            ? setInventoryAtLocation(admin, {
-                inventoryItemGid: c.inventoryItemGid,
-                locationGid: shopifyLocationGid,
-                quantity: drafts[idx].capacity,
-              })
-            : null,
-        )
-        .filter((p): p is Promise<void> => p !== null),
-    );
-
-    await db.classSession.createMany({
-      data: created.map((c, idx) => ({
-        classProductId: classProduct.id,
-        shop: session.shop,
-        variantGid: c.variantGid,
-        inventoryItemGid: c.inventoryItemGid,
-        sku: c.sku,
-        startsAt: drafts[idx].startsAt,
-        endsAt: drafts[idx].endsAt,
-        timezone: CLASS_TIMEZONE,
-        capacity: drafts[idx].capacity,
-        priceCents: null,
-      })),
-      skipDuplicates: true,
-    });
-
-    return {
-      ok: true,
-      message: `Added ${created.length} session${created.length === 1 ? "" : "s"}.`,
     };
   }
 
@@ -353,7 +394,7 @@ export const action = async ({
       variantIds: [target.variantGid],
     });
     await db.classSession.delete({ where: { id: target.id } });
-    return { ok: true, message: "Session removed." };
+    return { ok: true, intent: "remove-session", message: "Session removed." };
   }
 
   if (intent === "edit-session") {
@@ -403,7 +444,7 @@ export const action = async ({
       data: { startsAt: startsAt.toJSDate(), endsAt: endsAt.toJSDate(), sku },
     });
 
-    return { ok: true, message: "Session updated." };
+    return { ok: true, intent: "edit-session", message: "Session updated." };
   }
 
   if (intent === "delete-class") {
@@ -431,6 +472,7 @@ export default function ClassDetail() {
   const saveBarId = "class-save-bar";
   const saveFormId = "class-save-form";
   const deleteFormId = "class-delete-form";
+  const shopifyLocationGid = shopifyLocations[0]?.id ?? "";
   const [title, setTitle] = useState(classProduct.title);
   const [locationId, setLocationId] = useState(classProduct.locationId ?? "");
   const [durationMin, setDurationMin] = useState(
@@ -441,6 +483,12 @@ export default function ClassDetail() {
   );
   const [importRows, setImportRows] =
     useState<ShopifyVariantImportCandidate[]>(importCandidates);
+  const [newSessionBaselineRows, setNewSessionBaselineRows] = useState<
+    NewSessionDraftRow[]
+  >(() => buildDefaultNewSessionRows());
+  const [newSessionRows, setNewSessionRows] = useState<NewSessionDraftRow[]>(
+    () => buildDefaultNewSessionRows(),
+  );
   const [refreshStatus, setRefreshStatus] = useState<"idle" | "waiting">(
     "idle",
   );
@@ -477,12 +525,20 @@ export default function ClassDetail() {
       })),
     [classProduct.defaultCapacity, importCandidates],
   );
+  const newSessionRowsDirty =
+    JSON.stringify(newSessionRows) !== JSON.stringify(newSessionBaselineRows);
+  const newSessionPayload = useMemo(
+    () =>
+      newSessionRowsDirty ? buildNewSessionPayload(newSessionRows) : [],
+    [newSessionRows, newSessionRowsDirty],
+  );
   const isDirty =
     title !== classProduct.title ||
     locationId !== (classProduct.locationId ?? "") ||
     durationMin !== String(classProduct.durationMin) ||
     defaultCapacity !== String(classProduct.defaultCapacity) ||
-    JSON.stringify(importPayload) !== JSON.stringify(baselineImportPayload);
+    JSON.stringify(importPayload) !== JSON.stringify(baselineImportPayload) ||
+    newSessionRowsDirty;
 
   useEffect(() => {
     setTitle(classProduct.title);
@@ -500,6 +556,21 @@ export default function ClassDetail() {
   useEffect(() => {
     setImportRows(importCandidates);
   }, [importCandidates]);
+
+  useEffect(() => {
+    const rows = buildDefaultNewSessionRows();
+    setNewSessionBaselineRows(rows);
+    setNewSessionRows(rows);
+  }, [classProduct.id]);
+
+  useEffect(() => {
+    if (!(actionData && "ok" in actionData)) return;
+    if (actionData.intent !== "save-class") return;
+
+    const rows = buildDefaultNewSessionRows();
+    setNewSessionBaselineRows(rows);
+    setNewSessionRows(rows);
+  }, [actionData]);
 
   function refreshClass() {
     setRefreshStatus("waiting");
@@ -547,6 +618,7 @@ export default function ClassDetail() {
     setDurationMin(String(classProduct.durationMin));
     setDefaultCapacity(String(classProduct.defaultCapacity));
     setImportRows(importCandidates);
+    setNewSessionRows(newSessionBaselineRows);
     setShowNoNewClasses(false);
   }
 
@@ -570,16 +642,6 @@ export default function ClassDetail() {
         </button>
       </SaveBar>
 
-      <s-button
-        slot="primary-action"
-        variant="primary"
-        type="button"
-        disabled={!isDirty}
-        loading={busy ? true : undefined}
-        onClick={saveClass}
-      >
-        Save
-      </s-button>
       <s-button slot="secondary-actions" commandFor="class-actions-menu">
         More actions
       </s-button>
@@ -617,7 +679,7 @@ export default function ClassDetail() {
 
       <SessionsCard classProduct={classProduct} busy={busy} />
       <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
-      <AddSessionsCard shopifyLocations={shopifyLocations} busy={busy} />
+      <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
 
       <DefaultsCard
         title={title}
@@ -641,6 +703,16 @@ export default function ClassDetail() {
           type="hidden"
           name="sessions"
           value={JSON.stringify(importPayload)}
+        />
+        <input
+          type="hidden"
+          name="newSessions"
+          value={JSON.stringify(newSessionPayload)}
+        />
+        <input
+          type="hidden"
+          name="shopifyLocationGid"
+          value={shopifyLocationGid}
         />
       </Form>
 
@@ -945,36 +1017,16 @@ function ShopifyVariantImportCard({
 }
 
 function AddSessionsCard({
-  shopifyLocations,
-  busy,
+  rows,
+  setRows,
 }: {
-  shopifyLocations: { id: string; name: string }[];
-  busy: boolean;
+  rows: NewSessionDraftRow[];
+  setRows: Dispatch<SetStateAction<NewSessionDraftRow[]>>;
 }) {
-  const [draftRows, setDraftRows] = useState<{ date: string; time: string }[]>([
-    {
-      date: DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd"),
-      time: "15:00",
-    },
-  ]);
-  const shopifyLocationGid = shopifyLocations[0]?.id ?? "";
-
-  const payload = useMemo(
-    () =>
-      draftRows
-        .filter((r) => r.date && r.time)
-        .map((r) => ({
-          startsAt: DateTime.fromISO(`${r.date}T${r.time}`, {
-            zone: CLASS_TIMEZONE,
-          }).toISO(),
-        })),
-    [draftRows],
-  );
-
   return (
     <s-section heading="Add sessions">
       <s-stack direction="block" gap="base">
-        {draftRows.map((row, idx) => (
+        {rows.map((row, idx) => (
           <s-grid
             key={idx}
             gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
@@ -985,7 +1037,7 @@ function AddSessionsCard({
               label={idx === 0 ? "Date" : undefined}
               value={row.date}
               onChange={(e) =>
-                setDraftRows((rs) =>
+                setRows((rs) =>
                   rs.map((r, i) =>
                     i === idx
                       ? { ...r, date: (e.target as HTMLInputElement).value }
@@ -999,7 +1051,7 @@ function AddSessionsCard({
               placeholder="15:00"
               value={row.time}
               onChange={(e) =>
-                setDraftRows((rs) =>
+                setRows((rs) =>
                   rs.map((r, i) =>
                     i === idx
                       ? { ...r, time: (e.target as HTMLInputElement).value }
@@ -1013,9 +1065,9 @@ function AddSessionsCard({
                 slot="secondary-actions"
                 tone="critical"
                 onClick={() =>
-                  setDraftRows((rs) => rs.filter((_, i) => i !== idx))
+                  setRows((rs) => rs.filter((_, i) => i !== idx))
                 }
-                disabled={draftRows.length === 1}
+                disabled={rows.length === 1}
               >
                 Delete
               </s-button>
@@ -1023,44 +1075,23 @@ function AddSessionsCard({
           </s-grid>
         ))}
 
-        <Form method="post">
-          <input type="hidden" name="intent" value="add-sessions" />
-          <input
-            type="hidden"
-            name="shopifyLocationGid"
-            value={shopifyLocationGid}
-          />
-          <input
-            type="hidden"
-            name="sessions"
-            value={JSON.stringify(payload)}
-          />
-          <s-button-group accessibilityLabel="Session actions">
-            <s-button
-              slot="secondary-actions"
-              type="button"
-              onClick={() =>
-                setDraftRows((rs) => [
-                  ...rs,
-                  {
-                    date: rs[rs.length - 1]?.date ?? "",
-                    time: rs[rs.length - 1]?.time ?? "15:00",
-                  },
-                ])
-              }
-            >
-              Add row
-            </s-button>
-            <s-button
-              slot="primary-action"
-              type="submit"
-              variant="primary"
-              loading={busy ? true : undefined}
-            >
-              Generate variants
-            </s-button>
-          </s-button-group>
-        </Form>
+        <s-button-group accessibilityLabel="Session actions">
+          <s-button
+            slot="secondary-actions"
+            type="button"
+            onClick={() =>
+              setRows((rs) => [
+                ...rs,
+                {
+                  date: rs[rs.length - 1]?.date ?? "",
+                  time: rs[rs.length - 1]?.time ?? "15:00",
+                },
+              ])
+            }
+          >
+            Add row
+          </s-button>
+        </s-button-group>
       </s-stack>
     </s-section>
   );
@@ -1120,7 +1151,7 @@ function EditSessionPopover({
                 variant="primary"
                 loading={busy ? true : undefined}
               >
-                Save
+                Update session
               </s-button>
             </s-stack>
           </Form>
@@ -1128,6 +1159,26 @@ function EditSessionPopover({
       </s-popover>
     </>
   );
+}
+
+function buildDefaultNewSessionRows(): NewSessionDraftRow[] {
+  return [
+    {
+      date: DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd"),
+      time: "15:00",
+    },
+  ];
+}
+
+function buildNewSessionPayload(rows: NewSessionDraftRow[]): NewSessionInput[] {
+  return rows.map((row) => ({
+    startsAt:
+      row.date && row.time
+        ? DateTime.fromISO(`${row.date}T${row.time}`, {
+            zone: CLASS_TIMEZONE,
+          }).toISO()
+        : null,
+  }));
 }
 
 function buildImportCandidates(
