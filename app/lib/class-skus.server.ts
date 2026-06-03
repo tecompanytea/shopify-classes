@@ -12,13 +12,6 @@ type SkuRow = {
   sku: string | null;
 };
 
-type NormalizeRow = {
-  id: string;
-  sku: string | null;
-  variantGid: string;
-  classProduct: { productGid: string };
-};
-
 export async function allocateClassSessionSkus(
   client: PrismaSessionClient,
   shop: string,
@@ -32,44 +25,6 @@ export async function allocateClassSessionSkus(
   });
 
   return allocateUnusedSkus(rows, count);
-}
-
-export function buildClassSessionSkuNormalizationPlan(
-  rows: NormalizeRow[],
-): Array<{
-  id: string;
-  productGid: string;
-  variantGid: string;
-  sku: string;
-}> {
-  const used = new Set<string>();
-  let next = CLASS_SESSION_SKU_START;
-  const updates: Array<{
-    id: string;
-    productGid: string;
-    variantGid: string;
-    sku: string;
-  }> = [];
-
-  for (const row of rows) {
-    const current = row.sku?.trim() ?? "";
-    if (isClassSessionSku(current) && !used.has(current)) {
-      used.add(current);
-      continue;
-    }
-
-    const sku = nextUnusedSku(used, next);
-    next = Number(sku) + 1;
-    used.add(sku);
-    updates.push({
-      id: row.id,
-      productGid: row.classProduct.productGid,
-      variantGid: row.variantGid,
-      sku,
-    });
-  }
-
-  return updates;
 }
 
 function allocateUnusedSkus(rows: SkuRow[], count: number): string[] {

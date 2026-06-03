@@ -19,10 +19,7 @@ import { DateTime } from "luxon";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
-import {
-  allocateClassSessionSkus,
-  buildClassSessionSkuNormalizationPlan,
-} from "../lib/class-skus.server";
+import { allocateClassSessionSkus } from "../lib/class-skus.server";
 import { formatSessionTitle, parseSessionSku } from "../lib/sku";
 import { parseSessionTitle } from "../lib/parse-session-title";
 import {
@@ -358,49 +355,6 @@ export const action = async ({
     return { ok: true, message: "Session removed." };
   }
 
-  if (intent === "normalize-skus") {
-    const rows = await db.classSession.findMany({
-      where: { shop: session.shop },
-      include: { classProduct: { select: { productGid: true } } },
-      orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-    });
-    const updates = buildClassSessionSkuNormalizationPlan(rows);
-
-    if (updates.length === 0) {
-      return { ok: true, message: "Event SKUs are already normalized." };
-    }
-
-    for (const group of groupSkuUpdatesByProduct(updates)) {
-      for (const chunk of chunkArray(group.updates, 100)) {
-        try {
-          await updateVariantSkus(admin, {
-            productGid: group.productGid,
-            variants: chunk.map((update) => ({
-              variantId: update.variantGid,
-              sku: update.sku,
-            })),
-          });
-        } catch (error) {
-          return { error: shopifyMutationError(error) };
-        }
-
-        await db.$transaction(
-          chunk.map((update) =>
-            db.classSession.update({
-              where: { id: update.id },
-              data: { sku: update.sku },
-            }),
-          ),
-        );
-      }
-    }
-
-    return {
-      ok: true,
-      message: `Normalized ${updates.length} event SKU${updates.length === 1 ? "" : "s"}.`,
-    };
-  }
-
   if (intent === "edit-session") {
     const sessionId = String(form.get("sessionId") ?? "");
     const date = String(form.get("date") ?? "");
@@ -475,7 +429,6 @@ export default function ClassDetail() {
   const busy = navigation.state !== "idle" || revalidator.state !== "idle";
   const saveFormId = "class-save-form";
   const deleteFormId = "class-delete-form";
-  const normalizeSkusFormId = "class-normalize-skus-form";
   const [title, setTitle] = useState(classProduct.title);
   const [locationId, setLocationId] = useState(classProduct.locationId ?? "");
   const [durationMin, setDurationMin] = useState(
@@ -592,13 +545,6 @@ export default function ClassDetail() {
           Refresh
         </s-button>
         <s-button
-          icon="reset"
-          commandFor="normalize-skus-modal"
-          command="--show"
-        >
-          Normalize SKUs
-        </s-button>
-        <s-button
           icon="delete"
           tone="critical"
           commandFor="delete-class-modal"
@@ -651,10 +597,6 @@ export default function ClassDetail() {
         <input type="hidden" name="intent" value="delete-class" />
       </Form>
 
-      <Form id={normalizeSkusFormId} method="post">
-        <input type="hidden" name="intent" value="normalize-skus" />
-      </Form>
-
       <s-modal id="delete-class-modal" heading="Delete event?">
         <s-stack gap="base">
           <s-text>
@@ -675,31 +617,6 @@ export default function ClassDetail() {
         <s-button
           slot="secondary-actions"
           commandFor="delete-class-modal"
-          command="--hide"
-        >
-          Cancel
-        </s-button>
-      </s-modal>
-
-      <s-modal id="normalize-skus-modal" heading="Normalize SKUs?">
-        <s-stack gap="base">
-          <s-text>
-            This updates existing event session variant SKUs in Shopify to the
-            620001 sequence.
-          </s-text>
-        </s-stack>
-        <s-button
-          slot="primary-action"
-          variant="primary"
-          commandFor="normalize-skus-modal"
-          command="--hide"
-          onClick={() => submitFormById(normalizeSkusFormId)}
-        >
-          Normalize SKUs
-        </s-button>
-        <s-button
-          slot="secondary-actions"
-          commandFor="normalize-skus-modal"
           command="--hide"
         >
           Cancel
@@ -1199,29 +1116,6 @@ function buildImportCandidates(
 
 function productNumericId(gid: string): string {
   return gid.split("/").pop() ?? "";
-}
-
-function groupSkuUpdatesByProduct<
-  T extends { productGid: string; variantGid: string; sku: string },
->(updates: T[]): Array<{ productGid: string; updates: T[] }> {
-  const groups = new Map<string, T[]>();
-  for (const update of updates) {
-    const group = groups.get(update.productGid) ?? [];
-    group.push(update);
-    groups.set(update.productGid, group);
-  }
-  return Array.from(groups, ([productGid, grouped]) => ({
-    productGid,
-    updates: grouped,
-  }));
-}
-
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
 }
 
 function shopifyMutationError(error: unknown): string {
