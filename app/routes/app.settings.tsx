@@ -41,7 +41,11 @@ export default function Settings() {
   const actionData = useActionData<typeof action>() as { ok?: boolean } | undefined;
 
   return (
-    <s-page heading="Settings" back-href="/app">
+    <s-page heading="Settings">
+      <s-link slot="breadcrumb-actions" href="/app">
+        Classes
+      </s-link>
+
       <s-section heading="Defaults for new events">
         {actionData?.ok && <s-banner tone="success">Saved.</s-banner>}
         <Form method="post">

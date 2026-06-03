@@ -519,7 +519,11 @@ export default function ClassDetail() {
   }
 
   return (
-    <s-page heading={title || classProduct.title} back-href="/app/classes">
+    <s-page heading={title || classProduct.title}>
+      <s-link slot="breadcrumb-actions" href="/app/classes">
+        Events
+      </s-link>
+
       <s-button
         slot="primary-action"
         variant="primary"

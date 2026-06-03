@@ -123,7 +123,11 @@ export default function NewLocation() {
   }
 
   return (
-    <s-page heading="New Location" back-href="/app/locations">
+    <s-page heading="New Location">
+      <s-link slot="breadcrumb-actions" href="/app/locations">
+        Locations
+      </s-link>
+
       <s-button
         slot="primary-action"
         type="button"

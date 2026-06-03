@@ -44,7 +44,11 @@ export default function LocationsIndex() {
   const { rows } = useLoaderData<typeof loader>();
 
   return (
-    <s-page heading="Locations" back-href="/app">
+    <s-page heading="Locations">
+      <s-link slot="breadcrumb-actions" href="/app">
+        Classes
+      </s-link>
+
       <s-button slot="primary-action" href="/app/locations/new">
         Add location
       </s-button>

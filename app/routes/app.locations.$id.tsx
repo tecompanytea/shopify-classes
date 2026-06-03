@@ -135,7 +135,11 @@ export default function EditLocation() {
   }
 
   return (
-    <s-page heading="Locations" back-href="/app/locations">
+    <s-page heading="Locations">
+      <s-link slot="breadcrumb-actions" href="/app/locations">
+        Locations
+      </s-link>
+
       <s-button
         slot="secondary-actions"
         type="button"

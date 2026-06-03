@@ -488,7 +488,11 @@ export default function NewClassWizard() {
   }
 
   return (
-    <s-page heading="New event" back-href="/app/classes">
+    <s-page heading="New event">
+      <s-link slot="breadcrumb-actions" href="/app/classes">
+        Events
+      </s-link>
+
       <s-button
         slot="primary-action"
         variant="primary"
