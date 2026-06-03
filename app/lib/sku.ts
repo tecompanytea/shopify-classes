@@ -57,8 +57,9 @@ export function formatSessionTitle(
   startsAtIso: string,
   timezone: string,
 ): string {
+  // No comma: Shopify bulk variant paste treats commas as option separators.
   return DateTime.fromISO(startsAtIso, { zone: timezone }).toFormat(
-    "ccc LLL d, yyyy 'at' h:mm a",
+    "ccc LLL d 'at' h:mm a",
   );
 }
 

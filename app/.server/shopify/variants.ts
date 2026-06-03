@@ -7,7 +7,7 @@ export type SessionDraft = {
   timezone: string;
   capacity: number;
   sku: string;
-  displayName: string; // human-readable variant title, e.g. "Sat May 23, 2026 at 3:00 PM"
+  displayName: string; // human-readable variant title, e.g. "Sat May 23 at 3:00 PM"
 };
 
 export type SessionCreateResult = {
@@ -139,6 +139,57 @@ export async function updateSessionVariant(
             inventoryItem: { sku },
           },
         ],
+      },
+    },
+  );
+
+  const body = await response.json();
+  const errors = body?.data?.productVariantsBulkUpdate?.userErrors ?? [];
+  if (errors.length) {
+    throw new Error(
+      `productVariantsBulkUpdate: ${errors
+        .map(
+          (e: { field?: string[]; message: string }) =>
+            `${e.field?.join(".") ?? ""} ${e.message}`,
+        )
+        .join("; ")}`,
+    );
+  }
+}
+
+export async function updateSessionVariants(
+  admin: AdminApiContext,
+  {
+    productGid,
+    variants,
+    option,
+  }: {
+    productGid: string;
+    variants: Array<{ variantId: string; displayName: string; sku: string }>;
+    option: SessionDateOption;
+  },
+): Promise<void> {
+  if (variants.length === 0) return;
+
+  const response = await admin.graphql(
+    `#graphql
+      mutation UpdateSessionVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+          productVariants { id sku title }
+          userErrors { field message }
+        }
+      }
+    `,
+    {
+      variables: {
+        productId: productGid,
+        variants: variants.map((variant) => ({
+          id: variant.variantId,
+          optionValues: [
+            { optionId: option.sessionOption.id, name: variant.displayName },
+          ],
+          inventoryItem: { sku: variant.sku },
+        })),
       },
     },
   );
