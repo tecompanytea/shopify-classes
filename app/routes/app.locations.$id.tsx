@@ -3,7 +3,7 @@ import type {
   HeadersFunction,
   LoaderFunctionArgs,
 } from "react-router";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Form,
   redirect,
@@ -13,6 +13,7 @@ import {
   useRouteError,
 } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { SaveBar } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -117,16 +118,34 @@ export default function EditLocation() {
   const { location } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as ActionData | undefined;
   const navigation = useNavigation();
-  const values = actionData?.values ?? locationToFormValues(location);
+  const persistedValues = useMemo(() => locationToFormValues(location), [location]);
+  const [formValues, setFormValues] =
+    useState<LocationFormValues>(persistedValues);
   const saving = navigation.state !== "idle";
+  const saveBarId = "location-save-bar";
   const saveFormId = "location-details-form";
   const duplicateFormId = "location-duplicate-form";
   const deleteFormId = "location-delete-form";
-  const [status, setStatus] = useState(values.status);
+  const isDirty = JSON.stringify(formValues) !== JSON.stringify(persistedValues);
+
+  useEffect(() => {
+    setFormValues(persistedValues);
+  }, [persistedValues]);
+
+  function setFormValue<K extends keyof LocationFormValues>(
+    key: K,
+    value: LocationFormValues[K],
+  ) {
+    setFormValues((current) => ({ ...current, [key]: value }));
+  }
 
   function submitSaveForm() {
     const form = document.getElementById(saveFormId);
     if (form instanceof HTMLFormElement) form.requestSubmit();
+  }
+
+  function discardChanges() {
+    setFormValues(persistedValues);
   }
 
   function submitFormById(formId: string) {
@@ -140,20 +159,26 @@ export default function EditLocation() {
         Locations
       </s-link>
 
+      <SaveBar id={saveBarId} open={isDirty}>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={submitSaveForm}
+          {...({ variant: "primary" } as Record<string, string>)}
+        >
+          Save
+        </button>
+        <button type="button" disabled={saving} onClick={discardChanges}>
+          Discard
+        </button>
+      </SaveBar>
+
       <s-button
         slot="secondary-actions"
         type="button"
         commandFor="location-actions-menu"
       >
         More actions
-      </s-button>
-      <s-button
-        slot="primary-action"
-        type="button"
-        loading={saving ? true : undefined}
-        onClick={submitSaveForm}
-      >
-        Save
       </s-button>
 
       <s-menu id="location-actions-menu" accessibilityLabel="Location actions">
@@ -179,17 +204,27 @@ export default function EditLocation() {
       {actionData?.ok && <s-banner tone="success">Saved.</s-banner>}
 
       <Form id={saveFormId} method="post">
-        <input type="hidden" name="status" value={status} />
+        <input type="hidden" name="status" value={formValues.status} />
 
         <s-section heading="Location details">
           <s-text-field
             name="name"
             label="Location name"
             placeholder="Enter your branch name / location name"
-            defaultValue={values.name}
+            value={formValues.name}
+            onChange={(e) =>
+              setFormValue("name", (e.target as HTMLInputElement).value)
+            }
           />
 
-          <s-select name="country" label="Country" value={values.country}>
+          <s-select
+            name="country"
+            label="Country"
+            value={formValues.country}
+            onChange={(e) =>
+              setFormValue("country", (e.target as HTMLSelectElement).value)
+            }
+          >
             {COUNTRY_OPTIONS.map((country) => (
               <s-option key={country.value} value={country.value}>
                 {country.label}
@@ -201,21 +236,30 @@ export default function EditLocation() {
             name="addressLine1"
             label="Address"
             placeholder="Enter address"
-            defaultValue={values.addressLine1}
+            value={formValues.addressLine1}
+            onChange={(e) =>
+              setFormValue("addressLine1", (e.target as HTMLInputElement).value)
+            }
           />
 
           <s-text-field
             name="addressLine2"
             label="Apartment, suite, etc"
             placeholder="Enter apartment, suite, etc"
-            defaultValue={values.addressLine2}
+            value={formValues.addressLine2}
+            onChange={(e) =>
+              setFormValue("addressLine2", (e.target as HTMLInputElement).value)
+            }
           />
 
           <s-text-field
             name="city"
             label="City"
             placeholder="Enter city"
-            defaultValue={values.city}
+            value={formValues.city}
+            onChange={(e) =>
+              setFormValue("city", (e.target as HTMLInputElement).value)
+            }
           />
 
           <s-grid gridTemplateColumns="1fr 1fr" gap="base">
@@ -223,14 +267,20 @@ export default function EditLocation() {
               name="region"
               label="State"
               placeholder="Enter state"
-              defaultValue={values.region}
+              value={formValues.region}
+              onChange={(e) =>
+                setFormValue("region", (e.target as HTMLInputElement).value)
+              }
             />
 
             <s-text-field
               name="postalCode"
               label="Zip code"
               placeholder="Enter zip code"
-              defaultValue={values.postalCode}
+              value={formValues.postalCode}
+              onChange={(e) =>
+                setFormValue("postalCode", (e.target as HTMLInputElement).value)
+              }
             />
           </s-grid>
         </s-section>
@@ -240,9 +290,10 @@ export default function EditLocation() {
         <s-select
           label="Status"
           labelAccessibilityVisibility="exclusive"
-          value={status}
+          value={formValues.status}
           onChange={(e) =>
-            setStatus(
+            setFormValue(
+              "status",
               (e.target as HTMLSelectElement).value === "disabled"
                 ? "disabled"
                 : "enabled",
