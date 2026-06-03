@@ -679,9 +679,7 @@ export default function ClassDetail() {
 
       <SessionsCard classProduct={classProduct} busy={busy} />
       <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
-      <s-box paddingBlockEnd="large">
-        <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
-      </s-box>
+      <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
 
       <DefaultsCard
         title={title}
@@ -1142,6 +1140,13 @@ function EditSessionPopover({
 }) {
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState(defaultTime);
+  const [pickerView, setPickerView] = useState(() => {
+    const selectedDate = DateTime.fromISO(defaultDate, { zone: CLASS_TIMEZONE });
+
+    return selectedDate.isValid
+      ? selectedDate.toFormat("yyyy-LL")
+      : DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL");
+  });
   const popoverId = `edit-session-${sessionId}`;
 
   return (
@@ -1153,7 +1158,7 @@ function EditSessionPopover({
         commandFor={popoverId}
         accessibilityLabel={`Edit ${title}`}
       />
-      <s-popover id={popoverId} minInlineSize="260px">
+      <s-popover id={popoverId} inlineSize="320px">
         <s-box padding="base">
           <Form method="post">
             <input type="hidden" name="intent" value="edit-session" />
@@ -1161,10 +1166,23 @@ function EditSessionPopover({
             <input type="hidden" name="date" value={date} />
             <input type="hidden" name="time" value={time} />
             <s-stack direction="block" gap="base">
-              <s-date-field
-                label="Date"
+              <s-date-picker
+                type="single"
+                name="session-date"
                 value={date}
-                onChange={(e) => setDate((e.target as HTMLInputElement).value)}
+                view={pickerView}
+                onChange={(e) => {
+                  const nextDate = e.currentTarget.value;
+                  const selectedDate = DateTime.fromISO(nextDate, {
+                    zone: CLASS_TIMEZONE,
+                  });
+
+                  setDate(nextDate);
+                  if (selectedDate.isValid) {
+                    setPickerView(selectedDate.toFormat("yyyy-LL"));
+                  }
+                }}
+                onViewChange={(e) => setPickerView(e.currentTarget.view)}
               />
               <s-text-field
                 label="Start time (24h)"
