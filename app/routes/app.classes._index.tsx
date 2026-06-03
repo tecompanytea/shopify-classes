@@ -51,7 +51,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       sessionCount: c.sessions.length,
       upcomingSessionCount: upcoming.length,
       nextSessionAt: upcoming[0]?.startsAt.toISOString() ?? null,
-      href: `${appBaseHref}/app/classes/${c.id}`,
+      href: `shopify://admin/products/${productNumericId(c.productGid)}`,
     };
   });
 
@@ -127,8 +127,13 @@ export default function ClassesIndex() {
                 return (
                   <s-table-row key={row.id} clickDelegate={classLinkId}>
                     <s-table-cell>
-                      <s-link id={classLinkId} href={row.href} target="_top">
-                        {row.title}
+                      <s-link
+                        id={classLinkId}
+                        href={row.href}
+                        target="_top"
+                        tone="neutral"
+                      >
+                        <s-text type="strong">{row.title}</s-text>
                       </s-link>
                     </s-table-cell>
                     <s-table-cell>
@@ -170,4 +175,8 @@ function shopifyAdminAppHref(shop: string): string {
   const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "classes";
   return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`;
+}
+
+function productNumericId(gid: string): string {
+  return gid.split("/").pop() ?? "";
 }
