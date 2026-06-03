@@ -53,7 +53,11 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
     where: { shop: session.shop, cancelled: false },
     include: {
       classProduct: {
-        select: { title: true, location: { select: { name: true } } },
+        select: {
+          title: true,
+          productGid: true,
+          location: { select: { name: true } },
+        },
       },
     },
   });
@@ -63,6 +67,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
   const variantToSession = new Map(sessions.map((s) => [s.variantGid, s]));
   const bookings = await listBookingsForVariants(admin, {
     variantGids: sessions.map((s) => s.variantGid),
+    productGids: sessions.map((s) => s.classProduct.productGid),
   });
 
   const rows: BookingTableRow[] = [];
@@ -300,7 +305,7 @@ export default function Bookings() {
             </s-table-header-row>
             <s-table-body>
               {visibleRows.map((r, i) => (
-                <s-table-row key={`${r.orderId}-${r.variantId}`}>
+                <s-table-row key={`${r.orderId}-${r.lineItemId}`}>
                   <s-table-cell>{r.classTitle}</s-table-cell>
                   <s-table-cell>
                     {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
