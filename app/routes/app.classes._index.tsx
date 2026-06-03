@@ -52,7 +52,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       sessionCount: c.sessions.length,
       upcomingSessionCount: upcoming.length,
       nextSessionAt: upcoming[0]?.startsAt.toISOString() ?? null,
-      href: `shopify://admin/products/${productNumericId(c.productGid)}`,
+      href: `${appBaseHref}/app/classes/${c.id}`,
     };
   });
 
@@ -124,7 +124,7 @@ export default function ClassesIndex() {
             <s-table-body>
               {rows.map((row) => {
                 const classLinkId = `class-link-${row.id}`;
-                const productLinkId = `product-link-${row.id}`;
+                const classDetailLinkId = `class-detail-link-${row.id}`;
 
                 return (
                   <s-table-row key={row.id} clickDelegate={classLinkId}>
@@ -134,18 +134,18 @@ export default function ClassesIndex() {
                         type="button"
                         className={styles.orderNumber}
                         onClick={() =>
-                          document.getElementById(productLinkId)?.click()
+                          document.getElementById(classDetailLinkId)?.click()
                         }
                       >
                         {row.title}
                       </button>
                       <span className={styles.srOnly}>
                         <s-link
-                          id={productLinkId}
+                          id={classDetailLinkId}
                           href={row.href}
                           target="_top"
                         >
-                          {`Open product ${row.title}`}
+                          {`Open event ${row.title}`}
                         </s-link>
                       </span>
                     </s-table-cell>
@@ -188,8 +188,4 @@ function shopifyAdminAppHref(shop: string): string {
   const storeHandle = shop.replace(/\.myshopify\.com$/i, "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "classes";
   return `https://admin.shopify.com/store/${encodeURIComponent(storeHandle)}/apps/${encodeURIComponent(appHandle)}`;
-}
-
-function productNumericId(gid: string): string {
-  return gid.split("/").pop() ?? "";
 }
