@@ -13,6 +13,7 @@ import {
   useRevalidator,
   useRouteError,
 } from "react-router";
+import { SaveBar } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { DateTime } from "luxon";
 
@@ -427,6 +428,7 @@ export default function ClassDetail() {
   const navigation = useNavigation();
   const revalidator = useRevalidator();
   const busy = navigation.state !== "idle" || revalidator.state !== "idle";
+  const saveBarId = "class-save-bar";
   const saveFormId = "class-save-form";
   const deleteFormId = "class-delete-form";
   const [title, setTitle] = useState(classProduct.title);
@@ -460,6 +462,27 @@ export default function ClassDetail() {
       })),
     [defaultCapacityNumber, importRows],
   );
+  const baselineImportPayload = useMemo(
+    () =>
+      importCandidates.map((row) => ({
+        variantGid: row.variantGid,
+        inventoryItemGid: row.inventoryItemGid,
+        sku: row.sku,
+        startsAt: DateTime.fromISO(`${row.date}T${row.time}`, {
+          zone: CLASS_TIMEZONE,
+        }).toISO(),
+        capacity: Number.isFinite(row.capacity)
+          ? row.capacity
+          : classProduct.defaultCapacity,
+      })),
+    [classProduct.defaultCapacity, importCandidates],
+  );
+  const isDirty =
+    title !== classProduct.title ||
+    locationId !== (classProduct.locationId ?? "") ||
+    durationMin !== String(classProduct.durationMin) ||
+    defaultCapacity !== String(classProduct.defaultCapacity) ||
+    JSON.stringify(importPayload) !== JSON.stringify(baselineImportPayload);
 
   useEffect(() => {
     setTitle(classProduct.title);
@@ -518,16 +541,40 @@ export default function ClassDetail() {
     submitFormById(saveFormId);
   }
 
+  function discardChanges() {
+    setTitle(classProduct.title);
+    setLocationId(classProduct.locationId ?? "");
+    setDurationMin(String(classProduct.durationMin));
+    setDefaultCapacity(String(classProduct.defaultCapacity));
+    setImportRows(importCandidates);
+    setShowNoNewClasses(false);
+  }
+
   return (
     <s-page heading={title || classProduct.title}>
       <s-link slot="breadcrumb-actions" href="/app/classes">
         Events
       </s-link>
 
+      <SaveBar id={saveBarId} open={isDirty}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={saveClass}
+          {...({ variant: "primary" } as Record<string, string>)}
+        >
+          Save
+        </button>
+        <button type="button" disabled={busy} onClick={discardChanges}>
+          Discard
+        </button>
+      </SaveBar>
+
       <s-button
         slot="primary-action"
         variant="primary"
         type="button"
+        disabled={!isDirty}
         loading={busy ? true : undefined}
         onClick={saveClass}
       >
