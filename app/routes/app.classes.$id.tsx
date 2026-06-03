@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -823,6 +824,7 @@ function SessionsCard({
   busy: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const now = new Date();
   const sessions = [...classProduct.sessions].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -889,51 +891,69 @@ function SessionsCard({
           <s-table-body>
             {visibleRows.map(
               ({ session, title, status, upcoming, editDate, editTime }) => {
+                const editing = editingSessionId === session.id;
+
                 return (
-                  <s-table-row key={session.id}>
-                    <s-table-cell>{title}</s-table-cell>
-                    <s-table-cell>
-                      {status === "Cancelled" ? (
-                        <s-badge tone="critical">Cancelled</s-badge>
-                      ) : upcoming ? (
-                        <s-badge tone="success">Upcoming</s-badge>
-                      ) : (
-                        <s-badge>Past</s-badge>
-                      )}
-                    </s-table-cell>
-                    <s-table-cell>{session.capacity}</s-table-cell>
-                    <s-table-cell>{session.sku}</s-table-cell>
-                    <s-table-cell>
-                      <s-stack direction="inline" gap="small-200">
-                        <EditSessionPopover
-                          sessionId={session.id}
-                          title={title}
-                          defaultDate={editDate}
-                          defaultTime={editTime}
-                          busy={busy}
-                        />
-                        <Form method="post">
-                          <input
-                            type="hidden"
-                            name="intent"
-                            value="remove-session"
-                          />
-                          <input
-                            type="hidden"
-                            name="sessionId"
-                            value={session.id}
-                          />
+                  <Fragment key={session.id}>
+                    <s-table-row>
+                      <s-table-cell>{title}</s-table-cell>
+                      <s-table-cell>
+                        {status === "Cancelled" ? (
+                          <s-badge tone="critical">Cancelled</s-badge>
+                        ) : upcoming ? (
+                          <s-badge tone="success">Upcoming</s-badge>
+                        ) : (
+                          <s-badge>Past</s-badge>
+                        )}
+                      </s-table-cell>
+                      <s-table-cell>{session.capacity}</s-table-cell>
+                      <s-table-cell>{session.sku}</s-table-cell>
+                      <s-table-cell>
+                        <s-stack direction="inline" gap="small-200">
                           <s-button
-                            type="submit"
-                            tone="critical"
+                            type="button"
                             variant="tertiary"
-                            icon="delete"
-                            accessibilityLabel={`Remove ${title}`}
+                            icon="edit"
+                            accessibilityLabel={`${editing ? "Close editor for" : "Edit"} ${title}`}
+                            onClick={() =>
+                              setEditingSessionId((current) =>
+                                current === session.id ? null : session.id,
+                              )
+                            }
                           />
-                        </Form>
-                      </s-stack>
-                    </s-table-cell>
-                  </s-table-row>
+                          <Form method="post">
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="remove-session"
+                            />
+                            <input
+                              type="hidden"
+                              name="sessionId"
+                              value={session.id}
+                            />
+                            <s-button
+                              type="submit"
+                              tone="critical"
+                              variant="tertiary"
+                              icon="delete"
+                              accessibilityLabel={`Remove ${title}`}
+                            />
+                          </Form>
+                        </s-stack>
+                      </s-table-cell>
+                    </s-table-row>
+                    {editing && (
+                      <EditSessionRow
+                        key={`${session.id}-edit`}
+                        sessionId={session.id}
+                        defaultDate={editDate}
+                        defaultTime={editTime}
+                        busy={busy}
+                        onCancel={() => setEditingSessionId(null)}
+                      />
+                    )}
+                  </Fragment>
                 );
               },
             )}
@@ -941,6 +961,67 @@ function SessionsCard({
         </s-table>
       )}
     </s-section>
+  );
+}
+
+function EditSessionRow({
+  sessionId,
+  defaultDate,
+  defaultTime,
+  busy,
+  onCancel,
+}: {
+  sessionId: string;
+  defaultDate: string;
+  defaultTime: string;
+  busy: boolean;
+  onCancel: () => void;
+}) {
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(defaultTime);
+
+  return (
+    <s-table-row>
+      <s-table-cell>
+        <s-date-field
+          label="Date"
+          value={date}
+          onChange={(e) => setDate((e.target as HTMLInputElement).value)}
+        />
+      </s-table-cell>
+      <s-table-cell>
+        <s-text-field
+          label="Start time (24h)"
+          placeholder="15:00"
+          details="24-hour, e.g. 09:30"
+          value={time}
+          onChange={(e) => setTime((e.target as HTMLInputElement).value)}
+        />
+      </s-table-cell>
+      <s-table-cell></s-table-cell>
+      <s-table-cell></s-table-cell>
+      <s-table-cell>
+        <Form method="post">
+          <input type="hidden" name="intent" value="edit-session" />
+          <input type="hidden" name="sessionId" value={sessionId} />
+          <input type="hidden" name="date" value={date} />
+          <input type="hidden" name="time" value={time} />
+          <s-button-group accessibilityLabel="Session edit actions">
+            <s-button slot="secondary-actions" type="button" onClick={onCancel}>
+              Cancel
+            </s-button>
+            <s-button
+              slot="primary-action"
+              type="submit"
+              variant="primary"
+              loading={busy ? true : undefined}
+            >
+              Update session
+            </s-button>
+          </s-button-group>
+        </Form>
+      </s-table-cell>
+    </s-table-row>
   );
 }
 
@@ -1122,70 +1203,6 @@ function AddSessionsCard({
         )}
       </s-stack>
     </s-section>
-  );
-}
-
-// Per-row edit control: an icon button that toggles a popover with date + time
-// fields. Submitting posts the `edit-session` intent, which re-dates the Shopify
-// variant and the local session. Date/time are held in state and mirrored into
-// hidden inputs so submission doesn't depend on web-component form wiring.
-function EditSessionPopover({
-  sessionId,
-  title,
-  defaultDate,
-  defaultTime,
-  busy,
-}: {
-  sessionId: string;
-  title: string;
-  defaultDate: string;
-  defaultTime: string;
-  busy: boolean;
-}) {
-  const [date, setDate] = useState(defaultDate);
-  const [time, setTime] = useState(defaultTime);
-
-  return (
-    <>
-      <s-button
-        variant="tertiary"
-        icon="edit"
-        command="--toggle"
-        commandFor={`edit-${sessionId}`}
-        accessibilityLabel={`Edit ${title}`}
-      />
-      <s-popover id={`edit-${sessionId}`} minInlineSize="260px">
-        <s-box padding="base">
-          <Form method="post">
-            <input type="hidden" name="intent" value="edit-session" />
-            <input type="hidden" name="sessionId" value={sessionId} />
-            <input type="hidden" name="date" value={date} />
-            <input type="hidden" name="time" value={time} />
-            <s-stack direction="block" gap="base">
-              <s-date-field
-                label="Date"
-                value={date}
-                onChange={(e) => setDate((e.target as HTMLInputElement).value)}
-              />
-              <s-text-field
-                label="Start time (24h)"
-                placeholder="15:00"
-                details="24-hour, e.g. 09:30"
-                value={time}
-                onChange={(e) => setTime((e.target as HTMLInputElement).value)}
-              />
-              <s-button
-                type="submit"
-                variant="primary"
-                loading={busy ? true : undefined}
-              >
-                Update session
-              </s-button>
-            </s-stack>
-          </Form>
-        </s-box>
-      </s-popover>
-    </>
   );
 }
 
