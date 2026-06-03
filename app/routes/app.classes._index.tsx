@@ -6,6 +6,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
+import styles from "../booking-table.module.css";
 
 type ClassRow = {
   id: string;
@@ -123,18 +124,30 @@ export default function ClassesIndex() {
             <s-table-body>
               {rows.map((row) => {
                 const classLinkId = `class-link-${row.id}`;
+                const productLinkId = `product-link-${row.id}`;
 
                 return (
                   <s-table-row key={row.id} clickDelegate={classLinkId}>
                     <s-table-cell>
-                      <s-link
+                      <button
                         id={classLinkId}
-                        href={row.href}
-                        target="_top"
-                        tone="neutral"
+                        type="button"
+                        className={styles.orderNumber}
+                        onClick={() =>
+                          document.getElementById(productLinkId)?.click()
+                        }
                       >
-                        <s-text type="strong">{row.title}</s-text>
-                      </s-link>
+                        {row.title}
+                      </button>
+                      <span className={styles.srOnly}>
+                        <s-link
+                          id={productLinkId}
+                          href={row.href}
+                          target="_top"
+                        >
+                          {`Open product ${row.title}`}
+                        </s-link>
+                      </span>
                     </s-table-cell>
                     <s-table-cell>
                       <s-badge
