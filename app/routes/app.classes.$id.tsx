@@ -905,7 +905,7 @@ function SessionsCard({
                     <s-table-cell>{session.sku}</s-table-cell>
                     <s-table-cell>
                       <s-stack direction="inline" gap="small-200">
-                        <EditSessionPopover
+                        <EditSessionModal
                           sessionId={session.id}
                           title={title}
                           defaultDate={editDate}
@@ -1125,7 +1125,7 @@ function AddSessionsCard({
   );
 }
 
-function EditSessionPopover({
+function EditSessionModal({
   sessionId,
   title,
   defaultDate,
@@ -1140,14 +1140,10 @@ function EditSessionPopover({
 }) {
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState(defaultTime);
-  const [pickerView, setPickerView] = useState(() => {
-    const selectedDate = DateTime.fromISO(defaultDate, { zone: CLASS_TIMEZONE });
-
-    return selectedDate.isValid
-      ? selectedDate.toFormat("yyyy-LL")
-      : DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL");
-  });
-  const popoverId = `edit-session-${sessionId}`;
+  const [pickerView, setPickerView] = useState(() =>
+    buildDatePickerView(defaultDate),
+  );
+  const modalId = `edit-session-${sessionId}`;
 
   return (
     <>
@@ -1155,55 +1151,75 @@ function EditSessionPopover({
         type="button"
         variant="tertiary"
         icon="edit"
-        commandFor={popoverId}
+        commandFor={modalId}
+        command="--show"
         accessibilityLabel={`Edit ${title}`}
       />
-      <s-popover id={popoverId} inlineSize="320px">
-        <s-box padding="base">
-          <Form method="post">
+      <Form method="post">
+        <s-modal
+          id={modalId}
+          heading={`Edit ${title}`}
+          size="base"
+          onAfterHide={() => {
+            setDate(defaultDate);
+            setTime(defaultTime);
+            setPickerView(buildDatePickerView(defaultDate));
+          }}
+        >
+          <s-stack direction="block" gap="base">
             <input type="hidden" name="intent" value="edit-session" />
             <input type="hidden" name="sessionId" value={sessionId} />
             <input type="hidden" name="date" value={date} />
             <input type="hidden" name="time" value={time} />
-            <s-stack direction="block" gap="base">
-              <s-date-picker
-                type="single"
-                name="session-date"
-                value={date}
-                view={pickerView}
-                onChange={(e) => {
-                  const nextDate = e.currentTarget.value;
-                  const selectedDate = DateTime.fromISO(nextDate, {
-                    zone: CLASS_TIMEZONE,
-                  });
+            <s-date-picker
+              type="single"
+              name="session-date"
+              value={date}
+              view={pickerView}
+              onChange={(e) => {
+                const nextDate = e.currentTarget.value;
 
-                  setDate(nextDate);
-                  if (selectedDate.isValid) {
-                    setPickerView(selectedDate.toFormat("yyyy-LL"));
-                  }
-                }}
-                onViewChange={(e) => setPickerView(e.currentTarget.view)}
-              />
-              <s-text-field
-                label="Start time (24h)"
-                placeholder="15:00"
-                details="24-hour, e.g. 09:30"
-                value={time}
-                onChange={(e) => setTime((e.target as HTMLInputElement).value)}
-              />
-              <s-button
-                type="submit"
-                variant="primary"
-                loading={busy ? true : undefined}
-              >
-                Update session
-              </s-button>
-            </s-stack>
-          </Form>
-        </s-box>
-      </s-popover>
+                setDate(nextDate);
+                setPickerView(buildDatePickerView(nextDate));
+              }}
+              onViewChange={(e) => setPickerView(e.currentTarget.view)}
+            />
+            <s-text-field
+              label="Start time (24h)"
+              placeholder="15:00"
+              details="24-hour, e.g. 09:30"
+              value={time}
+              onChange={(e) => setTime((e.target as HTMLInputElement).value)}
+            />
+          </s-stack>
+          <s-button
+            slot="primary-action"
+            type="submit"
+            variant="primary"
+            loading={busy ? true : undefined}
+          >
+            Update session
+          </s-button>
+          <s-button
+            slot="secondary-actions"
+            variant="secondary"
+            commandFor={modalId}
+            command="--hide"
+          >
+            Cancel
+          </s-button>
+        </s-modal>
+      </Form>
     </>
   );
+}
+
+function buildDatePickerView(date: string) {
+  const selectedDate = DateTime.fromISO(date, { zone: CLASS_TIMEZONE });
+
+  return selectedDate.isValid
+    ? selectedDate.toFormat("yyyy-LL")
+    : DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL");
 }
 
 function buildDefaultNewSessionRows(): NewSessionDraftRow[] {
