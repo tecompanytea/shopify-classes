@@ -127,7 +127,7 @@ export default function ClassesIndex() {
                 const classDetailLinkId = `class-detail-link-${row.id}`;
 
                 return (
-                  <s-table-row key={row.id} clickDelegate={classLinkId}>
+                  <s-table-row key={row.id} clickDelegate={classDetailLinkId}>
                     <s-table-cell>
                       <button
                         id={classLinkId}

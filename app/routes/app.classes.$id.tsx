@@ -415,14 +415,33 @@ export const action = async ({
       return { ok: true, message: "No session titles to normalize." };
     }
 
-    const variants = sessions.map((classSession) => ({
-      variantId: classSession.variantGid,
-      displayName: formatSessionTitle(
-        classSession.startsAt.toISOString(),
-        CLASS_TIMEZONE,
-      ),
-      sku: classSession.sku,
-    }));
+    const product = await getProduct(admin, classProduct.productGid);
+    if (!product) return { error: "Shopify product not found." };
+
+    const existingVariantIds = new Set(
+      product.variants.map((variant) => variant.id),
+    );
+    const variants = sessions
+      .filter((classSession) => existingVariantIds.has(classSession.variantGid))
+      .map((classSession) => ({
+        variantId: classSession.variantGid,
+        displayName: formatSessionTitle(
+          classSession.startsAt.toISOString(),
+          CLASS_TIMEZONE,
+        ),
+        sku: classSession.sku,
+      }));
+    const skippedCount = sessions.length - variants.length;
+
+    if (variants.length === 0) {
+      return {
+        ok: true,
+        message:
+          skippedCount > 0
+            ? `No existing Shopify variants to normalize. Skipped ${skippedCount} missing variant${skippedCount === 1 ? "" : "s"}.`
+            : "No session titles to normalize.",
+      };
+    }
 
     const seenTitles = new Set<string>();
     for (const variant of variants) {
@@ -453,7 +472,7 @@ export const action = async ({
 
     return {
       ok: true,
-      message: `Normalized ${variants.length} session title${variants.length === 1 ? "" : "s"}.`,
+      message: `Normalized ${variants.length} session title${variants.length === 1 ? "" : "s"}.${skippedCount > 0 ? ` Skipped ${skippedCount} missing variant${skippedCount === 1 ? "" : "s"}.` : ""}`,
     };
   }
 
