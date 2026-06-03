@@ -670,18 +670,22 @@ function DefaultsCard({
             </s-option>
           ))}
         </s-select>
-        <s-number-field
-          label="Duration (minutes)"
-          value={durationMin}
-          onChange={(e) => setDurationMin((e.target as HTMLInputElement).value)}
-        />
-        <s-number-field
-          label="Default capacity (seats)"
-          value={defaultCapacity}
-          onChange={(e) =>
-            setDefaultCapacity((e.target as HTMLInputElement).value)
-          }
-        />
+        <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+          <s-number-field
+            label="Duration (minutes)"
+            value={durationMin}
+            onChange={(e) =>
+              setDurationMin((e.target as HTMLInputElement).value)
+            }
+          />
+          <s-number-field
+            label="Default capacity (seats)"
+            value={defaultCapacity}
+            onChange={(e) =>
+              setDefaultCapacity((e.target as HTMLInputElement).value)
+            }
+          />
+        </s-grid>
         <s-paragraph>Class price comes from the Shopify product.</s-paragraph>
       </s-stack>
     </s-section>
@@ -920,7 +924,12 @@ function AddSessionsCard({
     <s-section heading="Add sessions">
       <s-stack direction="block" gap="base">
         {draftRows.map((row, idx) => (
-          <s-stack key={idx} direction="inline" gap="base">
+          <s-grid
+            key={idx}
+            gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
+            gap="base"
+            alignItems="end"
+          >
             <s-date-field
               label={idx === 0 ? "Date" : undefined}
               value={row.date}
@@ -960,7 +969,7 @@ function AddSessionsCard({
                 Delete
               </s-button>
             </s-button-group>
-          </s-stack>
+          </s-grid>
         ))}
 
         <Form method="post">
