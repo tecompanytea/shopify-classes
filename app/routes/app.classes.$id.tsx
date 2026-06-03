@@ -1026,102 +1026,111 @@ function AddSessionsCard({
   const enabled = rows.length > 0;
 
   return (
-    <s-section heading="Add sessions">
-      <s-stack direction="block" gap="base">
-        <s-stack
-          direction="inline"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <s-text>Add session</s-text>
-          <s-switch
-            label="Add session"
-            labelAccessibilityVisibility="exclusive"
-            checked={enabled}
-            onChange={(e) => {
-              const checked = (e.target as HTMLInputElement).checked;
-              setRows((current) =>
-                checked
-                  ? current.length > 0
-                    ? current
-                    : [buildNewSessionDraftRow()]
-                  : [],
-              );
-            }}
-          />
-        </s-stack>
+    <>
+      <s-section heading="Add sessions">
+        <s-stack direction="block" gap="base">
+          <s-stack
+            direction="inline"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <s-text>Add session</s-text>
+            <s-switch
+              label="Add session"
+              labelAccessibilityVisibility="exclusive"
+              checked={enabled}
+              onChange={(e) => {
+                const checked = (e.target as HTMLInputElement).checked;
+                setRows((current) =>
+                  checked
+                    ? current.length > 0
+                      ? current
+                      : [buildNewSessionDraftRow()]
+                    : [],
+                );
+              }}
+            />
+          </s-stack>
 
-        {enabled &&
-          rows.map((row, idx) => (
-            <s-grid
-              key={idx}
-              gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
-              gap="base"
-              alignItems="end"
-            >
-              <s-date-field
-                label={idx === 0 ? "Date" : undefined}
-                value={row.date}
-                onChange={(e) =>
-                  setRows((rs) =>
-                    rs.map((r, i) =>
-                      i === idx
-                        ? { ...r, date: (e.target as HTMLInputElement).value }
-                        : r,
-                    ),
-                  )
-                }
-              />
-              <s-text-field
-                label={idx === 0 ? "Start time (24h)" : undefined}
-                placeholder="15:00"
-                value={row.time}
-                onChange={(e) =>
-                  setRows((rs) =>
-                    rs.map((r, i) =>
-                      i === idx
-                        ? { ...r, time: (e.target as HTMLInputElement).value }
-                        : r,
-                    ),
-                  )
-                }
-              />
-              <s-button-group accessibilityLabel="Session row actions">
-                <s-button
-                  slot="secondary-actions"
-                  tone="critical"
-                  onClick={() =>
-                    setRows((rs) => rs.filter((_, i) => i !== idx))
+          {enabled &&
+            rows.map((row, idx) => (
+              <s-grid
+                key={idx}
+                gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
+                gap="base"
+                alignItems="end"
+              >
+                <s-date-field
+                  label={idx === 0 ? "Date" : undefined}
+                  value={row.date}
+                  onChange={(e) =>
+                    setRows((rs) =>
+                      rs.map((r, i) =>
+                        i === idx
+                          ? {
+                              ...r,
+                              date: (e.target as HTMLInputElement).value,
+                            }
+                          : r,
+                      ),
+                    )
                   }
-                  disabled={rows.length === 1}
-                >
-                  Delete
-                </s-button>
-              </s-button-group>
-            </s-grid>
-          ))}
+                />
+                <s-text-field
+                  label={idx === 0 ? "Start time (24h)" : undefined}
+                  placeholder="15:00"
+                  value={row.time}
+                  onChange={(e) =>
+                    setRows((rs) =>
+                      rs.map((r, i) =>
+                        i === idx
+                          ? {
+                              ...r,
+                              time: (e.target as HTMLInputElement).value,
+                            }
+                          : r,
+                      ),
+                    )
+                  }
+                />
+                <s-button-group accessibilityLabel="Session row actions">
+                  <s-button
+                    slot="secondary-actions"
+                    tone="critical"
+                    onClick={() =>
+                      setRows((rs) => rs.filter((_, i) => i !== idx))
+                    }
+                    disabled={rows.length === 1}
+                  >
+                    Delete
+                  </s-button>
+                </s-button-group>
+              </s-grid>
+            ))}
 
-        {enabled && (
-          <s-button-group accessibilityLabel="Session actions">
-            <s-button
-              slot="secondary-actions"
-              type="button"
-              onClick={() =>
-                setRows((rs) => [
-                  ...rs,
-                  {
-                    date: rs[rs.length - 1]?.date ?? "",
-                    time: rs[rs.length - 1]?.time ?? "15:00",
-                  },
-                ])
-              }
-            >
-              Add row
-            </s-button>
-          </s-button-group>
-        )}
-      </s-stack>
-    </s-section>
+          {enabled && (
+            <s-button-group accessibilityLabel="Session actions">
+              <s-button
+                slot="secondary-actions"
+                type="button"
+                onClick={() =>
+                  setRows((rs) => [
+                    ...rs,
+                    {
+                      date: rs[rs.length - 1]?.date ?? "",
+                      time: rs[rs.length - 1]?.time ?? "15:00",
+                    },
+                  ])
+                }
+              >
+                Add row
+              </s-button>
+            </s-button-group>
+          )}
+        </s-stack>
+      </s-section>
+      {enabled && <s-box blockSize="360px" />}
+    </>
   );
 }
 
@@ -1140,9 +1149,6 @@ function EditSessionModal({
 }) {
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState(defaultTime);
-  const [pickerView, setPickerView] = useState(() =>
-    buildDatePickerView(defaultDate),
-  );
   const modalId = `edit-session-${sessionId}`;
 
   return (
@@ -1163,7 +1169,6 @@ function EditSessionModal({
           onAfterHide={() => {
             setDate(defaultDate);
             setTime(defaultTime);
-            setPickerView(buildDatePickerView(defaultDate));
           }}
         >
           <s-stack direction="block" gap="base">
@@ -1171,18 +1176,10 @@ function EditSessionModal({
             <input type="hidden" name="sessionId" value={sessionId} />
             <input type="hidden" name="date" value={date} />
             <input type="hidden" name="time" value={time} />
-            <s-date-picker
-              type="single"
-              name="session-date"
+            <s-date-field
+              label="Date"
               value={date}
-              view={pickerView}
-              onChange={(e) => {
-                const nextDate = e.currentTarget.value;
-
-                setDate(nextDate);
-                setPickerView(buildDatePickerView(nextDate));
-              }}
-              onViewChange={(e) => setPickerView(e.currentTarget.view)}
+              onChange={(e) => setDate((e.target as HTMLInputElement).value)}
             />
             <s-text-field
               label="Start time (24h)"
@@ -1212,14 +1209,6 @@ function EditSessionModal({
       </Form>
     </>
   );
-}
-
-function buildDatePickerView(date: string) {
-  const selectedDate = DateTime.fromISO(date, { zone: CLASS_TIMEZONE });
-
-  return selectedDate.isValid
-    ? selectedDate.toFormat("yyyy-LL")
-    : DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL");
 }
 
 function buildDefaultNewSessionRows(): NewSessionDraftRow[] {
