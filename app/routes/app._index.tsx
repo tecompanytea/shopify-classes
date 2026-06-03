@@ -36,6 +36,7 @@ const SORT_OPTIONS: { label: string; field: SortField }[] = [
 
 type BookingTableRow = BookingRow & {
   classTitle: string;
+  classProductHref: string;
   locationName: string | null;
   sessionStartsAt: string;
 };
@@ -77,6 +78,9 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
     rows.push({
       ...b,
       classTitle: s.classProduct.title,
+      classProductHref: `shopify://admin/products/${productNumericId(
+        s.classProduct.productGid,
+      )}`,
       locationName: s.classProduct.location?.name ?? null,
       sessionStartsAt: s.startsAt.toISOString(),
     });
@@ -306,7 +310,26 @@ export default function Bookings() {
             <s-table-body>
               {visibleRows.map((r, i) => (
                 <s-table-row key={`${r.orderId}-${r.lineItemId}`}>
-                  <s-table-cell>{r.classTitle}</s-table-cell>
+                  <s-table-cell>
+                    <button
+                      type="button"
+                      className={styles.orderNumber}
+                      onClick={() =>
+                        document.getElementById(`class-product-link-${i}`)?.click()
+                      }
+                    >
+                      {r.classTitle}
+                    </button>
+                    <span className={styles.srOnly}>
+                      <s-link
+                        id={`class-product-link-${i}`}
+                        href={r.classProductHref}
+                        target="_top"
+                      >
+                        {`Open product ${r.classTitle}`}
+                      </s-link>
+                    </span>
+                  </s-table-cell>
                   <s-table-cell>
                     {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
                   </s-table-cell>
@@ -472,4 +495,8 @@ function fulfillmentIcon(status: string): "" | "enabled" | "incomplete" {
     default:
       return "";
   }
+}
+
+function productNumericId(gid: string): string {
+  return gid.split("/").pop() ?? "";
 }
