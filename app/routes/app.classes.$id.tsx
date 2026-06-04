@@ -74,6 +74,26 @@ type NewSessionDraftRow = {
   time: string;
 };
 
+type SessionSortField =
+  | "variant"
+  | "sku"
+  | "seats"
+  | "date"
+  | "time"
+  | "status";
+
+const SESSION_SORT_OPTIONS: Array<{
+  field: SessionSortField;
+  label: string;
+}> = [
+  { field: "date", label: "Date" },
+  { field: "variant", label: "Variant" },
+  { field: "sku", label: "SKU" },
+  { field: "seats", label: "Seats" },
+  { field: "time", label: "Time" },
+  { field: "status", label: "Status" },
+];
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const id = String(params.id);
@@ -840,6 +860,7 @@ function SessionsCard({
   variantTitleById: Record<string, string>;
 }) {
   const [query, setQuery] = useState("");
+  const [sortField, setSortField] = useState<SessionSortField>("date");
   const now = new Date();
   const sessions = [...classProduct.sessions].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -865,13 +886,45 @@ function SessionsCard({
       variantTitle,
       status,
       upcoming,
+      startsAtMillis: startsAt.toMillis(),
+      timeMinutes: startsAt.hour * 60 + startsAt.minute,
       displayDate: startsAt.toFormat("ccc LLL d"),
       displayTime: startsAt.toFormat("h:mm a"),
     };
   });
+  const sortedRows = [...rows].sort((a, b) => {
+    switch (sortField) {
+      case "variant":
+        return a.variantTitle.localeCompare(b.variantTitle, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      case "sku":
+        return (a.session.sku ?? "").localeCompare(
+          b.session.sku ?? "",
+          undefined,
+          {
+            numeric: true,
+            sensitivity: "base",
+          },
+        );
+      case "seats":
+        return a.session.capacity - b.session.capacity;
+      case "time":
+        return a.timeMinutes - b.timeMinutes;
+      case "status":
+        return a.status.localeCompare(b.status, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      case "date":
+      default:
+        return a.startsAtMillis - b.startsAtMillis;
+    }
+  });
   const normalizedQuery = query.trim().toLowerCase();
   const visibleRows = normalizedQuery
-    ? rows.filter(
+    ? sortedRows.filter(
         ({ session, status, variantTitle, displayDate, displayTime }) =>
           [
             variantTitle,
@@ -885,7 +938,7 @@ function SessionsCard({
           .toLowerCase()
           .includes(normalizedQuery),
       )
-    : rows;
+    : sortedRows;
 
   return (
     <s-section
@@ -896,14 +949,46 @@ function SessionsCard({
         <s-text tone="neutral">No sessions yet. Add dates below.</s-text>
       ) : (
         <s-table>
-          <s-search-field
+          <s-grid
             slot="filters"
-            label="Search sessions"
-            labelAccessibilityVisibility="exclusive"
-            placeholder="Search sessions"
-            value={query}
-            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-          />
+            gap="small-200"
+            gridTemplateColumns="1fr auto"
+          >
+            <s-search-field
+              label="Search sessions"
+              labelAccessibilityVisibility="exclusive"
+              placeholder="Search sessions"
+              value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+            <s-button
+              icon="sort"
+              variant="secondary"
+              accessibilityLabel="Sort"
+              commandFor="sessions-sort-actions"
+            />
+            <s-popover id="sessions-sort-actions">
+              <s-stack gap="none">
+                <s-box padding="small">
+                  <s-choice-list
+                    label="Sort by"
+                    name="sessions-sort-by"
+                    values={[sortField]}
+                    onChange={(event) => {
+                      const next = event.currentTarget.values[0];
+                      if (next) setSortField(next as SessionSortField);
+                    }}
+                  >
+                    {SESSION_SORT_OPTIONS.map((option) => (
+                      <s-choice key={option.field} value={option.field}>
+                        {option.label}
+                      </s-choice>
+                    ))}
+                  </s-choice-list>
+                </s-box>
+              </s-stack>
+            </s-popover>
+          </s-grid>
           <s-table-header-row>
             <s-table-header listSlot="primary">Variant</s-table-header>
             <s-table-header listSlot="secondary">SKU</s-table-header>
