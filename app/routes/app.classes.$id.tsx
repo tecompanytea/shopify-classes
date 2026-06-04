@@ -74,22 +74,15 @@ type NewSessionDraftRow = {
   time: string;
 };
 
-type SessionSortField =
-  | "variant"
-  | "seats"
-  | "date"
-  | "time"
-  | "status";
+type SessionSortField = "date" | "status" | "seats";
 
 const SESSION_SORT_OPTIONS: Array<{
   field: SessionSortField;
   label: string;
 }> = [
   { field: "date", label: "Date" },
-  { field: "variant", label: "Variant" },
-  { field: "seats", label: "Seats" },
-  { field: "time", label: "Time" },
   { field: "status", label: "Status" },
+  { field: "seats", label: "Seats" },
 ];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -888,22 +881,14 @@ function SessionsCard({
       status,
       upcoming,
       startsAtMillis: startsAt.toMillis(),
-      timeMinutes: startsAt.hour * 60 + startsAt.minute,
       displayDate: startsAt.toFormat("ccc LLL d"),
       displayTime: startsAt.toFormat("h:mm a"),
     };
   });
   const sortedRows = [...rows].sort((a, b) => {
     switch (sortField) {
-      case "variant":
-        return a.variantTitle.localeCompare(b.variantTitle, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        });
       case "seats":
         return a.session.capacity - b.session.capacity;
-      case "time":
-        return a.timeMinutes - b.timeMinutes;
       case "status":
         return a.status.localeCompare(b.status, undefined, {
           numeric: true,
@@ -1012,6 +997,26 @@ function SessionsCard({
               </s-stack>
             </s-popover>
           </s-grid>
+          <s-stack
+            slot={"bulkActions" as never}
+            direction="inline"
+            gap="small-200"
+          >
+            <s-button
+              icon="menu-horizontal"
+              variant="secondary"
+              accessibilityLabel="More actions"
+              commandFor="sessions-bulk-actions"
+            />
+            <s-menu
+              id="sessions-bulk-actions"
+              accessibilityLabel="Session bulk actions"
+            >
+              <s-button icon="delete" tone="critical">
+                Delete product
+              </s-button>
+            </s-menu>
+          </s-stack>
           <s-table-header-row>
             <s-table-header listSlot="primary">
               <s-stack direction="inline" gap="small" alignItems="center">
@@ -1033,6 +1038,7 @@ function SessionsCard({
             </s-table-header>
             <s-table-header listSlot="labeled">Date</s-table-header>
             <s-table-header listSlot="labeled">Time</s-table-header>
+            <s-table-header listSlot="inline"></s-table-header>
           </s-table-header-row>
           <s-table-body>
             {visibleRows.map(
@@ -1081,6 +1087,17 @@ function SessionsCard({
                     <s-table-cell>{session.capacity}</s-table-cell>
                     <s-table-cell>{displayDate}</s-table-cell>
                     <s-table-cell>{displayTime}</s-table-cell>
+                    <s-table-cell>
+                      <s-button
+                        icon="edit"
+                        variant="tertiary"
+                        accessibilityLabel={`Edit ${variantTitle}`}
+                        href={`shopify://admin/products/${productNumericId(
+                          classProduct.productGid,
+                        )}/variants/${productNumericId(session.variantGid)}`}
+                        target="_top"
+                      />
+                    </s-table-cell>
                   </s-table-row>
                 );
               },
