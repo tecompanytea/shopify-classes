@@ -105,8 +105,16 @@ export default function Bookings() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [openCustomer, setOpenCustomer] = useState<number | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
   const activeLabel = SCOPE_OPTIONS.find((o) => o.scope === scope)!.label;
   const isDateSort = sortField === "classDate";
+  const copyEmail = async (email: string) => {
+    await navigator.clipboard.writeText(email);
+    setCopiedEmail(email);
+    window.setTimeout(() => {
+      setCopiedEmail((current) => (current === email ? null : current));
+    }, 1500);
+  };
 
   // Filter + sort client-side so switching scope/search/sort is instant (no refetch).
   const now = Date.now();
@@ -398,9 +406,32 @@ export default function Bookings() {
                                 ) : null}
                               </s-stack>
                               {r.email ? (
-                                <s-link href={`mailto:${r.email}`}>
-                                  <span className={styles.popoverLine}>{r.email}</span>
-                                </s-link>
+                                <s-stack
+                                  direction="inline"
+                                  justifyContent="space-between"
+                                  alignItems="center"
+                                  gap="base"
+                                >
+                                  <s-link href={`mailto:${r.email}`}>
+                                    <span className={styles.popoverLine}>
+                                      {r.email}
+                                    </span>
+                                  </s-link>
+                                  <s-tooltip id={`copy-email-${i}`}>
+                                    Copy email
+                                  </s-tooltip>
+                                  <s-button
+                                    variant="tertiary"
+                                    icon={
+                                      copiedEmail === r.email
+                                        ? "check"
+                                        : "clipboard"
+                                    }
+                                    accessibilityLabel={`Copy email ${r.email}`}
+                                    interestFor={`copy-email-${i}`}
+                                    onClick={() => copyEmail(r.email!)}
+                                  />
+                                </s-stack>
                               ) : null}
                               <s-button
                                 variant="secondary"
