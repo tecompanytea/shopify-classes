@@ -705,6 +705,7 @@ export default function ClassDetail() {
       <SessionsCard
         classProduct={classProduct}
         variantTitleById={variantTitleById}
+        busy={busy}
       />
       <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
       <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
@@ -846,9 +847,11 @@ function DefaultsCard({
 function SessionsCard({
   classProduct,
   variantTitleById,
+  busy,
 }: {
   classProduct: ClassProductWith;
   variantTitleById: Record<string, string>;
+  busy: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [sortField, setSortField] = useState<SessionSortField>("date");
@@ -881,6 +884,8 @@ function SessionsCard({
       status,
       upcoming,
       startsAtMillis: startsAt.toMillis(),
+      editDate: startsAt.toFormat("yyyy-LL-dd"),
+      editTime: startsAt.toFormat("HH:mm"),
       displayDate: startsAt.toFormat("ccc LLL d"),
       displayTime: startsAt.toFormat("h:mm a"),
     };
@@ -947,6 +952,7 @@ function SessionsCard({
       return next;
     });
   };
+  const selectedSessionCount = selectedSessionIds.size;
 
   return (
     <s-section
@@ -957,66 +963,80 @@ function SessionsCard({
         <s-text tone="neutral">No sessions yet. Add dates below.</s-text>
       ) : (
         <s-table>
-          <s-grid
-            slot="filters"
-            gap="small-200"
-            gridTemplateColumns="1fr auto"
-          >
-            <s-search-field
-              label="Search sessions"
-              labelAccessibilityVisibility="exclusive"
-              placeholder="Search sessions"
-              value={query}
-              onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-            />
-            <s-button
-              icon="sort"
-              variant="secondary"
-              accessibilityLabel="Sort"
-              commandFor="sessions-sort-actions"
-            />
-            <s-popover id="sessions-sort-actions">
-              <s-stack gap="none">
-                <s-box padding="small">
-                  <s-choice-list
-                    label="Sort by"
-                    name="sessions-sort-by"
-                    values={[sortField]}
-                    onChange={(event) => {
-                      const next = event.currentTarget.values[0];
-                      if (next) setSortField(next as SessionSortField);
-                    }}
-                  >
-                    {SESSION_SORT_OPTIONS.map((option) => (
-                      <s-choice key={option.field} value={option.field}>
-                        {option.label}
-                      </s-choice>
-                    ))}
-                  </s-choice-list>
-                </s-box>
-              </s-stack>
-            </s-popover>
-          </s-grid>
-          <s-stack
-            slot={"bulkActions" as never}
-            direction="inline"
-            gap="small-200"
-          >
-            <s-button
-              icon="menu-horizontal"
-              variant="secondary"
-              accessibilityLabel="More actions"
-              commandFor="sessions-bulk-actions"
-            />
-            <s-menu
-              id="sessions-bulk-actions"
-              accessibilityLabel="Session bulk actions"
+          {selectedSessionCount > 0 ? (
+            <s-box slot="filters" padding="small" background="strong">
+              <s-grid gridTemplateColumns="1fr auto" alignItems="center">
+                <s-stack direction="inline" gap="small" alignItems="center">
+                  <s-checkbox
+                    accessibilityLabel="Select all sessions"
+                    checked={allVisibleSelected}
+                    indeterminate={someVisibleSelected}
+                    onChange={(event) =>
+                      setVisibleSessionsSelected(event.currentTarget.checked)
+                    }
+                  />
+                  <s-text type="strong">
+                    {selectedSessionCount} selected
+                  </s-text>
+                </s-stack>
+                <s-button
+                  icon="menu-horizontal"
+                  variant="secondary"
+                  accessibilityLabel="Actions"
+                  commandFor="sessions-more-actions"
+                />
+                <s-menu
+                  id="sessions-more-actions"
+                  accessibilityLabel="Session actions"
+                >
+                  <s-button icon="delete" tone="critical">
+                    Delete product
+                  </s-button>
+                </s-menu>
+              </s-grid>
+            </s-box>
+          ) : (
+            <s-grid
+              slot="filters"
+              gap="small-200"
+              gridTemplateColumns="1fr auto"
             >
-              <s-button icon="delete" tone="critical">
-                Delete product
-              </s-button>
-            </s-menu>
-          </s-stack>
+              <s-search-field
+                label="Search sessions"
+                labelAccessibilityVisibility="exclusive"
+                placeholder="Search sessions"
+                value={query}
+                onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
+              />
+              <s-button
+                icon="sort"
+                variant="secondary"
+                accessibilityLabel="Sort"
+                commandFor="sessions-sort-actions"
+              />
+              <s-popover id="sessions-sort-actions">
+                <s-stack gap="none">
+                  <s-box padding="small">
+                    <s-choice-list
+                      label="Sort by"
+                      name="sessions-sort-by"
+                      values={[sortField]}
+                      onChange={(event) => {
+                        const next = event.currentTarget.values[0];
+                        if (next) setSortField(next as SessionSortField);
+                      }}
+                    >
+                      {SESSION_SORT_OPTIONS.map((option) => (
+                        <s-choice key={option.field} value={option.field}>
+                          {option.label}
+                        </s-choice>
+                      ))}
+                    </s-choice-list>
+                  </s-box>
+                </s-stack>
+              </s-popover>
+            </s-grid>
+          )}
           <s-table-header-row>
             <s-table-header listSlot="primary">
               <s-stack direction="inline" gap="small" alignItems="center">
@@ -1047,10 +1067,13 @@ function SessionsCard({
                 variantTitle,
                 status,
                 upcoming,
+                editDate,
+                editTime,
                 displayDate,
                 displayTime,
               }) => {
                 const checkboxId = `session-${session.id}-checkbox`;
+                const editPopoverId = `session-${session.id}-edit`;
 
                 return (
                   <s-table-row key={session.id} clickDelegate={checkboxId}>
@@ -1092,10 +1115,15 @@ function SessionsCard({
                         icon="edit"
                         variant="tertiary"
                         accessibilityLabel={`Edit ${variantTitle}`}
-                        href={`shopify://admin/products/${productNumericId(
-                          classProduct.productGid,
-                        )}/variants/${productNumericId(session.variantGid)}`}
-                        target="_top"
+                        commandFor={editPopoverId}
+                      />
+                      <EditSessionPopover
+                        id={editPopoverId}
+                        sessionId={session.id}
+                        variantTitle={variantTitle}
+                        defaultDate={editDate}
+                        defaultTime={editTime}
+                        busy={busy}
                       />
                     </s-table-cell>
                   </s-table-row>
@@ -1106,6 +1134,63 @@ function SessionsCard({
         </s-table>
       )}
     </s-section>
+  );
+}
+
+function EditSessionPopover({
+  id,
+  sessionId,
+  variantTitle,
+  defaultDate,
+  defaultTime,
+  busy,
+}: {
+  id: string;
+  sessionId: string;
+  variantTitle: string;
+  defaultDate: string;
+  defaultTime: string;
+  busy: boolean;
+}) {
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(defaultTime);
+
+  return (
+    <s-popover id={id} inlineSize="320px">
+      <s-box padding="base">
+        <Form method="post">
+          <input type="hidden" name="intent" value="edit-session" />
+          <input type="hidden" name="sessionId" value={sessionId} />
+          <input type="hidden" name="date" value={date} />
+          <input type="hidden" name="time" value={time} />
+          <s-stack direction="block" gap="base">
+            <s-text type="strong">{variantTitle}</s-text>
+            <s-date-field
+              label="Date"
+              value={date}
+              onChange={(event) =>
+                setDate((event.target as HTMLInputElement).value)
+              }
+            />
+            <s-text-field
+              label="Time (24h)"
+              placeholder="15:00"
+              value={time}
+              onChange={(event) =>
+                setTime((event.target as HTMLInputElement).value)
+              }
+            />
+            <s-button
+              type="submit"
+              variant="primary"
+              loading={busy ? true : undefined}
+            >
+              Save
+            </s-button>
+          </s-stack>
+        </Form>
+      </s-box>
+    </s-popover>
   );
 }
 
