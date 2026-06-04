@@ -96,6 +96,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!classProduct) throw new Response("Not found", { status: 404 });
 
   const product = await getProduct(admin, classProduct.productGid);
+  const variantTitleById = Object.fromEntries(
+    (product?.variants ?? []).map((variant) => [variant.id, variant.title]),
+  );
   const importCandidates = product
     ? buildImportCandidates(
         product.variants,
@@ -104,7 +107,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       )
     : [];
 
-  return { classProduct, locations, shopifyLocations, importCandidates };
+  return {
+    classProduct,
+    locations,
+    shopifyLocations,
+    importCandidates,
+    variantTitleById,
+  };
 };
 
 type ActionData =
@@ -463,8 +472,13 @@ export function ErrorBoundary() {
 }
 
 export default function ClassDetail() {
-  const { classProduct, locations, shopifyLocations, importCandidates } =
-    useLoaderData<typeof loader>();
+  const {
+    classProduct,
+    locations,
+    shopifyLocations,
+    importCandidates,
+    variantTitleById,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
@@ -677,7 +691,10 @@ export default function ClassDetail() {
         <s-banner heading="No new classes found" tone="warning" />
       )}
 
-      <SessionsCard classProduct={classProduct} busy={busy} />
+      <SessionsCard
+        classProduct={classProduct}
+        variantTitleById={variantTitleById}
+      />
       <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
       <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
 
@@ -817,10 +834,10 @@ function DefaultsCard({
 
 function SessionsCard({
   classProduct,
-  busy,
+  variantTitleById,
 }: {
   classProduct: ClassProductWith;
-  busy: boolean;
+  variantTitleById: Record<string, string>;
 }) {
   const [query, setQuery] = useState("");
   const now = new Date();
@@ -832,8 +849,10 @@ function SessionsCard({
       typeof session.startsAt === "string"
         ? session.startsAt
         : session.startsAt.toISOString();
-    const title = formatSessionTitle(iso, CLASS_TIMEZONE);
-    const editDt = DateTime.fromISO(iso, { zone: CLASS_TIMEZONE });
+    const startsAt = DateTime.fromISO(iso, { zone: CLASS_TIMEZONE });
+    const variantTitle =
+      variantTitleById[session.variantGid] ??
+      formatSessionTitle(iso, CLASS_TIMEZONE);
     const upcoming = !session.cancelled && new Date(iso) > now;
     const status = session.cancelled
       ? "Cancelled"
@@ -843,17 +862,25 @@ function SessionsCard({
 
     return {
       session,
-      title,
+      variantTitle,
       status,
       upcoming,
-      editDate: editDt.toFormat("yyyy-LL-dd"),
-      editTime: editDt.toFormat("HH:mm"),
+      displayDate: startsAt.toFormat("ccc LLL d"),
+      displayTime: startsAt.toFormat("h:mm a"),
     };
   });
   const normalizedQuery = query.trim().toLowerCase();
   const visibleRows = normalizedQuery
-    ? rows.filter(({ session, status, title }) =>
-        [title, status, String(session.capacity), session.sku]
+    ? rows.filter(
+        ({ session, status, variantTitle, displayDate, displayTime }) =>
+          [
+            variantTitle,
+            status,
+            String(session.capacity),
+            session.sku,
+            displayDate,
+            displayTime,
+          ]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery),
@@ -878,63 +905,46 @@ function SessionsCard({
             onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
           />
           <s-table-header-row>
-            <s-table-header listSlot="primary">Date</s-table-header>
-            <s-table-header listSlot="inline">Status</s-table-header>
+            <s-table-header listSlot="kicker"></s-table-header>
+            <s-table-header listSlot="primary">Variant</s-table-header>
+            <s-table-header listSlot="secondary">SKU</s-table-header>
             <s-table-header format="numeric" listSlot="labeled">
               Seats
             </s-table-header>
-            <s-table-header listSlot="labeled">SKU</s-table-header>
-            <s-table-header></s-table-header>
+            <s-table-header listSlot="labeled">Date</s-table-header>
+            <s-table-header listSlot="labeled">Time</s-table-header>
+            <s-table-header listSlot="inline">Status</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {visibleRows.map(
-              ({ session, title, status, upcoming, editDate, editTime }) => {
-                return (
-                  <s-table-row key={session.id}>
-                    <s-table-cell>{title}</s-table-cell>
-                    <s-table-cell>
-                      {status === "Cancelled" ? (
-                        <s-badge tone="critical">Cancelled</s-badge>
-                      ) : upcoming ? (
-                        <s-badge tone="success">Upcoming</s-badge>
-                      ) : (
-                        <s-badge>Past</s-badge>
-                      )}
-                    </s-table-cell>
-                    <s-table-cell>{session.capacity}</s-table-cell>
-                    <s-table-cell>{session.sku}</s-table-cell>
-                    <s-table-cell>
-                      <s-stack direction="inline" gap="small-200">
-                        <EditSessionFields
-                          sessionId={session.id}
-                          defaultDate={editDate}
-                          defaultTime={editTime}
-                          busy={busy}
-                        />
-                        <Form method="post">
-                          <input
-                            type="hidden"
-                            name="intent"
-                            value="remove-session"
-                          />
-                          <input
-                            type="hidden"
-                            name="sessionId"
-                            value={session.id}
-                          />
-                          <s-button
-                            type="submit"
-                            tone="critical"
-                            variant="tertiary"
-                            icon="delete"
-                            accessibilityLabel={`Remove ${title}`}
-                          />
-                        </Form>
-                      </s-stack>
-                    </s-table-cell>
-                  </s-table-row>
-                );
-              },
+              ({
+                session,
+                variantTitle,
+                status,
+                upcoming,
+                displayDate,
+                displayTime,
+              }) => (
+                <s-table-row key={session.id}>
+                  <s-table-cell>
+                    <s-icon type="check" tone="success" />
+                  </s-table-cell>
+                  <s-table-cell>{variantTitle}</s-table-cell>
+                  <s-table-cell>{session.sku}</s-table-cell>
+                  <s-table-cell>{session.capacity}</s-table-cell>
+                  <s-table-cell>{displayDate}</s-table-cell>
+                  <s-table-cell>{displayTime}</s-table-cell>
+                  <s-table-cell>
+                    {status === "Cancelled" ? (
+                      <s-badge tone="critical">Cancelled</s-badge>
+                    ) : upcoming ? (
+                      <s-badge tone="success">Upcoming</s-badge>
+                    ) : (
+                      <s-badge>Past</s-badge>
+                    )}
+                  </s-table-cell>
+                </s-table-row>
+              ),
             )}
           </s-table-body>
         </s-table>
@@ -1127,52 +1137,6 @@ function AddSessionsCard({
         )}
       </s-stack>
     </s-section>
-  );
-}
-
-function EditSessionFields({
-  sessionId,
-  defaultDate,
-  defaultTime,
-  busy,
-}: {
-  sessionId: string;
-  defaultDate: string;
-  defaultTime: string;
-  busy: boolean;
-}) {
-  const [date, setDate] = useState(defaultDate);
-  const [time, setTime] = useState(defaultTime);
-
-  return (
-    <Form method="post">
-      <input type="hidden" name="intent" value="edit-session" />
-      <input type="hidden" name="sessionId" value={sessionId} />
-      <input type="hidden" name="date" value={date} />
-      <input type="hidden" name="time" value={time} />
-      <s-stack direction="inline" gap="small-200" alignItems="end">
-        <s-date-field
-          label="Date"
-          labelAccessibilityVisibility="exclusive"
-          value={date}
-          onChange={(e) => setDate((e.target as HTMLInputElement).value)}
-        />
-        <s-text-field
-          label="Start time (24h)"
-          labelAccessibilityVisibility="exclusive"
-          placeholder="15:00"
-          value={time}
-          onChange={(e) => setTime((e.target as HTMLInputElement).value)}
-        />
-        <s-button
-          type="submit"
-          variant="secondary"
-          loading={busy ? true : undefined}
-        >
-          Update
-        </s-button>
-      </s-stack>
-    </Form>
   );
 }
 

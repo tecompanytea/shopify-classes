@@ -417,29 +417,43 @@ export default function Bookings() {
                                       {r.email}
                                     </span>
                                   </s-link>
-                                  <s-tooltip id={`copy-email-${i}`}>
-                                    Copy email
-                                  </s-tooltip>
-                                  <s-button
-                                    variant="tertiary"
-                                    icon={
-                                      copiedEmail === r.email
-                                        ? "check"
-                                        : "clipboard"
-                                    }
-                                    accessibilityLabel={`Copy email ${r.email}`}
-                                    interestFor={`copy-email-${i}`}
-                                    onClick={() => copyEmail(r.email!)}
-                                  />
+                                  <s-stack
+                                    direction="inline"
+                                    gap="small-200"
+                                    alignItems="center"
+                                  >
+                                    <s-tooltip id={`copy-email-${i}`}>
+                                      Copy email
+                                    </s-tooltip>
+                                    <s-button
+                                      variant="tertiary"
+                                      icon={
+                                        copiedEmail === r.email
+                                          ? "check"
+                                          : "clipboard"
+                                      }
+                                      accessibilityLabel={`Copy email ${r.email}`}
+                                      interestFor={`copy-email-${i}`}
+                                      onClick={() => copyEmail(r.email!)}
+                                    />
+                                    <s-button
+                                      variant="secondary"
+                                      href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
+                                      target="_top"
+                                    >
+                                      View customer
+                                    </s-button>
+                                  </s-stack>
                                 </s-stack>
-                              ) : null}
-                              <s-button
-                                variant="secondary"
-                                href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
-                                target="_top"
-                              >
-                                View customer
-                              </s-button>
+                              ) : (
+                                <s-button
+                                  variant="secondary"
+                                  href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
+                                  target="_top"
+                                >
+                                  View customer
+                                </s-button>
+                              )}
                             </s-stack>
                           </s-box>
                         </s-popover>
