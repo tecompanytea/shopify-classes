@@ -905,9 +905,8 @@ function SessionsCard({
                     <s-table-cell>{session.sku}</s-table-cell>
                     <s-table-cell>
                       <s-stack direction="inline" gap="small-200">
-                        <EditSessionModal
+                        <EditSessionFields
                           sessionId={session.id}
-                          title={title}
                           defaultDate={editDate}
                           defaultTime={editTime}
                           busy={busy}
@@ -1131,80 +1130,49 @@ function AddSessionsCard({
   );
 }
 
-function EditSessionModal({
+function EditSessionFields({
   sessionId,
-  title,
   defaultDate,
   defaultTime,
   busy,
 }: {
   sessionId: string;
-  title: string;
   defaultDate: string;
   defaultTime: string;
   busy: boolean;
 }) {
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState(defaultTime);
-  const modalId = `edit-session-${sessionId}`;
 
   return (
-    <>
-      <s-button
-        type="button"
-        variant="tertiary"
-        icon="edit"
-        commandFor={modalId}
-        command="--show"
-        accessibilityLabel={`Edit ${title}`}
-      />
-      <Form method="post">
-        <s-modal
-          id={modalId}
-          heading={`Edit ${title}`}
-          size="base"
-          onAfterHide={() => {
-            setDate(defaultDate);
-            setTime(defaultTime);
-          }}
+    <Form method="post">
+      <input type="hidden" name="intent" value="edit-session" />
+      <input type="hidden" name="sessionId" value={sessionId} />
+      <input type="hidden" name="date" value={date} />
+      <input type="hidden" name="time" value={time} />
+      <s-stack direction="inline" gap="small-200" alignItems="end">
+        <s-date-field
+          label="Date"
+          labelAccessibilityVisibility="exclusive"
+          value={date}
+          onChange={(e) => setDate((e.target as HTMLInputElement).value)}
+        />
+        <s-text-field
+          label="Start time (24h)"
+          labelAccessibilityVisibility="exclusive"
+          placeholder="15:00"
+          value={time}
+          onChange={(e) => setTime((e.target as HTMLInputElement).value)}
+        />
+        <s-button
+          type="submit"
+          variant="secondary"
+          loading={busy ? true : undefined}
         >
-          <s-stack direction="block" gap="base">
-            <input type="hidden" name="intent" value="edit-session" />
-            <input type="hidden" name="sessionId" value={sessionId} />
-            <input type="hidden" name="date" value={date} />
-            <input type="hidden" name="time" value={time} />
-            <s-date-field
-              label="Date"
-              value={date}
-              onChange={(e) => setDate((e.target as HTMLInputElement).value)}
-            />
-            <s-text-field
-              label="Start time (24h)"
-              placeholder="15:00"
-              details="24-hour, e.g. 09:30"
-              value={time}
-              onChange={(e) => setTime((e.target as HTMLInputElement).value)}
-            />
-          </s-stack>
-          <s-button
-            slot="primary-action"
-            type="submit"
-            variant="primary"
-            loading={busy ? true : undefined}
-          >
-            Update session
-          </s-button>
-          <s-button
-            slot="secondary-actions"
-            variant="secondary"
-            commandFor={modalId}
-            command="--hide"
-          >
-            Cancel
-          </s-button>
-        </s-modal>
-      </Form>
-    </>
+          Update
+        </s-button>
+      </s-stack>
+    </Form>
   );
 }
 
