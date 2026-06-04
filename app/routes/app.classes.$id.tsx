@@ -905,7 +905,6 @@ function SessionsCard({
             onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
           />
           <s-table-header-row>
-            <s-table-header listSlot="kicker"></s-table-header>
             <s-table-header listSlot="primary">Variant</s-table-header>
             <s-table-header listSlot="secondary">SKU</s-table-header>
             <s-table-header format="numeric" listSlot="labeled">
@@ -924,27 +923,37 @@ function SessionsCard({
                 upcoming,
                 displayDate,
                 displayTime,
-              }) => (
-                <s-table-row key={session.id}>
-                  <s-table-cell>
-                    <s-icon type="check" tone="success" />
-                  </s-table-cell>
-                  <s-table-cell>{variantTitle}</s-table-cell>
-                  <s-table-cell>{session.sku}</s-table-cell>
-                  <s-table-cell>{session.capacity}</s-table-cell>
-                  <s-table-cell>{displayDate}</s-table-cell>
-                  <s-table-cell>{displayTime}</s-table-cell>
-                  <s-table-cell>
-                    {status === "Cancelled" ? (
-                      <s-badge tone="critical">Cancelled</s-badge>
-                    ) : upcoming ? (
-                      <s-badge tone="success">Upcoming</s-badge>
-                    ) : (
-                      <s-badge>Past</s-badge>
-                    )}
-                  </s-table-cell>
-                </s-table-row>
-              ),
+              }) => {
+                const checkboxId = `session-${session.id}-checkbox`;
+
+                return (
+                  <s-table-row key={session.id} clickDelegate={checkboxId}>
+                    <s-table-cell>
+                      <s-stack
+                        direction="inline"
+                        gap="small"
+                        alignItems="center"
+                      >
+                        <s-checkbox id={checkboxId} />
+                        <s-text>{variantTitle}</s-text>
+                      </s-stack>
+                    </s-table-cell>
+                    <s-table-cell>{session.sku}</s-table-cell>
+                    <s-table-cell>{session.capacity}</s-table-cell>
+                    <s-table-cell>{displayDate}</s-table-cell>
+                    <s-table-cell>{displayTime}</s-table-cell>
+                    <s-table-cell>
+                      {status === "Cancelled" ? (
+                        <s-badge tone="critical">Cancelled</s-badge>
+                      ) : upcoming ? (
+                        <s-badge tone="success">Upcoming</s-badge>
+                      ) : (
+                        <s-badge>Past</s-badge>
+                      )}
+                    </s-table-cell>
+                  </s-table-row>
+                );
+              },
             )}
           </s-table-body>
         </s-table>
