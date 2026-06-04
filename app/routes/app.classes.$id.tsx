@@ -76,7 +76,6 @@ type NewSessionDraftRow = {
 
 type SessionSortField =
   | "variant"
-  | "sku"
   | "seats"
   | "date"
   | "time"
@@ -88,7 +87,6 @@ const SESSION_SORT_OPTIONS: Array<{
 }> = [
   { field: "date", label: "Date" },
   { field: "variant", label: "Variant" },
-  { field: "sku", label: "SKU" },
   { field: "seats", label: "Seats" },
   { field: "time", label: "Time" },
   { field: "status", label: "Status" },
@@ -861,6 +859,9 @@ function SessionsCard({
 }) {
   const [query, setQuery] = useState("");
   const [sortField, setSortField] = useState<SessionSortField>("date");
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const now = new Date();
   const sessions = [...classProduct.sessions].sort(
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
@@ -899,15 +900,6 @@ function SessionsCard({
           numeric: true,
           sensitivity: "base",
         });
-      case "sku":
-        return (a.session.sku ?? "").localeCompare(
-          b.session.sku ?? "",
-          undefined,
-          {
-            numeric: true,
-            sensitivity: "base",
-          },
-        );
       case "seats":
         return a.session.capacity - b.session.capacity;
       case "time":
@@ -939,6 +931,37 @@ function SessionsCard({
           .includes(normalizedQuery),
       )
     : sortedRows;
+  const selectedVisibleCount = visibleRows.filter(({ session }) =>
+    selectedSessionIds.has(session.id),
+  ).length;
+  const allVisibleSelected =
+    visibleRows.length > 0 && selectedVisibleCount === visibleRows.length;
+  const someVisibleSelected =
+    selectedVisibleCount > 0 && selectedVisibleCount < visibleRows.length;
+  const setSessionSelected = (sessionId: string, checked: boolean) => {
+    setSelectedSessionIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(sessionId);
+      } else {
+        next.delete(sessionId);
+      }
+      return next;
+    });
+  };
+  const setVisibleSessionsSelected = (checked: boolean) => {
+    setSelectedSessionIds((current) => {
+      const next = new Set(current);
+      visibleRows.forEach(({ session }) => {
+        if (checked) {
+          next.add(session.id);
+        } else {
+          next.delete(session.id);
+        }
+      });
+      return next;
+    });
+  };
 
   return (
     <s-section
@@ -990,14 +1013,26 @@ function SessionsCard({
             </s-popover>
           </s-grid>
           <s-table-header-row>
-            <s-table-header listSlot="primary">Variant</s-table-header>
-            <s-table-header listSlot="secondary">SKU</s-table-header>
+            <s-table-header listSlot="primary">
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-checkbox
+                  accessibilityLabel="Select all sessions"
+                  checked={allVisibleSelected}
+                  indeterminate={someVisibleSelected}
+                  onChange={(event) =>
+                    setVisibleSessionsSelected(event.currentTarget.checked)
+                  }
+                />
+                <s-text>Variant</s-text>
+              </s-stack>
+            </s-table-header>
+            <s-table-header listSlot="secondary">Status</s-table-header>
+            <s-table-header listSlot="labeled">SKU</s-table-header>
             <s-table-header format="numeric" listSlot="labeled">
               Seats
             </s-table-header>
             <s-table-header listSlot="labeled">Date</s-table-header>
             <s-table-header listSlot="labeled">Time</s-table-header>
-            <s-table-header listSlot="inline">Status</s-table-header>
           </s-table-header-row>
           <s-table-body>
             {visibleRows.map(
@@ -1019,14 +1054,20 @@ function SessionsCard({
                         gap="small"
                         alignItems="center"
                       >
-                        <s-checkbox id={checkboxId} />
+                        <s-checkbox
+                          id={checkboxId}
+                          accessibilityLabel={`Select ${variantTitle}`}
+                          checked={selectedSessionIds.has(session.id)}
+                          onChange={(event) =>
+                            setSessionSelected(
+                              session.id,
+                              event.currentTarget.checked,
+                            )
+                          }
+                        />
                         <s-text>{variantTitle}</s-text>
                       </s-stack>
                     </s-table-cell>
-                    <s-table-cell>{session.sku}</s-table-cell>
-                    <s-table-cell>{session.capacity}</s-table-cell>
-                    <s-table-cell>{displayDate}</s-table-cell>
-                    <s-table-cell>{displayTime}</s-table-cell>
                     <s-table-cell>
                       {status === "Cancelled" ? (
                         <s-badge tone="critical">Cancelled</s-badge>
@@ -1036,6 +1077,10 @@ function SessionsCard({
                         <s-badge>Past</s-badge>
                       )}
                     </s-table-cell>
+                    <s-table-cell>{session.sku}</s-table-cell>
+                    <s-table-cell>{session.capacity}</s-table-cell>
+                    <s-table-cell>{displayDate}</s-table-cell>
+                    <s-table-cell>{displayTime}</s-table-cell>
                   </s-table-row>
                 );
               },
