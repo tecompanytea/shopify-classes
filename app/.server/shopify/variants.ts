@@ -3,7 +3,6 @@ import type { SessionDateOption } from "./products";
 
 export type SessionDraft = {
   startsAt: Date;
-  endsAt: Date;
   timezone: string;
   capacity: number;
   sku: string;

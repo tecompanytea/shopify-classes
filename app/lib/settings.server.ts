@@ -1,5 +1,9 @@
 import db from "../db.server";
-import { CLASS_TIMEZONE, DEFAULT_CLASS_CAPACITY } from "./class-config";
+import {
+  CLASS_TIMEZONE,
+  DEFAULT_CLASS_CAPACITY,
+  DEFAULT_CLASS_START_TIME,
+} from "./class-config";
 
 // Returns the per-shop defaults, creating the row on first access.
 export async function getOrCreateShopSettings(shop: string) {
@@ -12,6 +16,7 @@ export async function getOrCreateShopSettings(shop: string) {
     data: {
       shop,
       defaultTimezone: CLASS_TIMEZONE,
+      defaultStartTime: DEFAULT_CLASS_START_TIME,
       defaultCapacity: DEFAULT_CLASS_CAPACITY,
     },
     include: { defaultLocation: true },

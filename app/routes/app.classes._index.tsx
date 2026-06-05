@@ -13,7 +13,6 @@ type ClassRow = {
   title: string;
   status: string;
   locationName: string | null;
-  durationMin: number;
   defaultCapacity: number;
   sessionCount: number;
   upcomingSessionCount: number;
@@ -47,7 +46,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       title: c.title,
       status: c.status,
       locationName: c.location?.name ?? null,
-      durationMin: c.durationMin,
       defaultCapacity: c.defaultCapacity,
       sessionCount: c.sessions.length,
       upcomingSessionCount: upcoming.length,

@@ -26,10 +26,15 @@ import { DateTime } from "luxon";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { CLASS_TIMEZONE } from "../lib/class-config";
+import { CLASS_TIMEZONE, DEFAULT_CLASS_START_TIME } from "../lib/class-config";
 import { allocateClassSessionSkus } from "../lib/class-skus.server";
 import { formatSessionTitle, parseSessionSku } from "../lib/sku";
 import { parseSessionTitle } from "../lib/parse-session-title";
+import {
+  normalizeSessionTime,
+  SESSION_TIME_OPTIONS,
+  sessionTimeLabel,
+} from "../lib/session-time-options";
 import {
   ensureSessionDateOption,
   getProduct,
@@ -55,7 +60,7 @@ type ShopifyVariantImportCandidate = {
   title: string;
   date: string;
   time: string;
-  capacity: number;
+  addToEvent: boolean;
 };
 
 type ImportSessionInput = {
@@ -91,23 +96,6 @@ const SESSION_SORT_OPTIONS: Array<{
   { field: "seats", label: "Seats" },
 ];
 
-const SESSION_TIME_OPTIONS = Array.from({ length: 27 }, (_, index) => {
-  const totalMinutes = 8 * 60 + index * 30;
-  const hour = Math.floor(totalMinutes / 60);
-  const minute = totalMinutes % 60;
-  const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(
-    2,
-    "0",
-  )}`;
-  const labelHour = hour % 12 || 12;
-  const meridiem = hour < 12 ? "AM" : "PM";
-
-  return {
-    value,
-    label: `${labelHour}:${String(minute).padStart(2, "0")} ${meridiem}`,
-  };
-});
-
 type StatusBadgeTone = "success" | "info" | "critical";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -139,7 +127,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ? buildImportCandidates(
         product.variants,
         classProduct.sessions,
-        classProduct.defaultCapacity,
+        classProduct.defaultStartTime,
       )
     : [];
 
@@ -179,8 +167,9 @@ export const action = async ({
     if (!title) return { error: "Enter an event name to continue." };
 
     const locationId = String(form.get("locationId") ?? "") || null;
-    const durationMin = Number(
-      form.get("durationMin") ?? classProduct.durationMin,
+    const defaultStartTime = normalizeSessionTime(
+      form.get("defaultStartTime"),
+      classProduct.defaultStartTime ?? DEFAULT_CLASS_START_TIME,
     );
     const defaultCapacity = Number(
       form.get("defaultCapacity") ?? classProduct.defaultCapacity,
@@ -214,7 +203,6 @@ export const action = async ({
       variantGid: string;
       inventoryItemGid: string | null;
       startsAt: Date;
-      endsAt: Date;
       timezone: string;
       capacity: number;
       priceCents: null;
@@ -262,7 +250,6 @@ export const action = async ({
             inventoryItemGid:
               variant.inventoryItemId ?? input.inventoryItemGid ?? null,
             startsAt: startsAt.toJSDate(),
-            endsAt: startsAt.plus({ minutes: durationMin }).toJSDate(),
             timezone: CLASS_TIMEZONE,
             capacity: Number.isFinite(capacity) ? capacity : defaultCapacity,
             priceCents: null,
@@ -312,7 +299,6 @@ export const action = async ({
       const startsAtIso = input.startsAt.toISO()!;
       return {
         startsAt: input.startsAt.toJSDate(),
-        endsAt: input.startsAt.plus({ minutes: durationMin }).toJSDate(),
         timezone: CLASS_TIMEZONE,
         capacity: input.capacity,
         sku: skus[skuIndex++],
@@ -327,7 +313,6 @@ export const action = async ({
       inventoryItemGid: string | null;
       sku: string;
       startsAt: Date;
-      endsAt: Date;
       timezone: string;
       capacity: number;
       priceCents: null;
@@ -374,7 +359,6 @@ export const action = async ({
         inventoryItemGid: c.inventoryItemGid,
         sku: c.sku,
         startsAt: newSessionDrafts[idx].startsAt,
-        endsAt: newSessionDrafts[idx].endsAt,
         timezone: CLASS_TIMEZONE,
         capacity: newSessionDrafts[idx].capacity,
         priceCents: null,
@@ -404,7 +388,7 @@ export const action = async ({
           title,
           locationId,
           timezone: CLASS_TIMEZONE,
-          durationMin,
+          defaultStartTime,
           defaultCapacity,
           defaultPriceCents: null,
         },
@@ -457,7 +441,6 @@ export const action = async ({
     if (!startsAt.isValid) {
       return { error: "Enter a valid date and 24-hour time (e.g. 09:30)." };
     }
-    const endsAt = startsAt.plus({ minutes: classProduct.durationMin });
     const startsAtIso = startsAt.toISO()!;
     const sku =
       target.sku || (await allocateClassSessionSkus(db, session.shop, 1))[0];
@@ -486,7 +469,7 @@ export const action = async ({
 
     await db.classSession.update({
       where: { id: target.id },
-      data: { startsAt: startsAt.toJSDate(), endsAt: endsAt.toJSDate(), sku },
+      data: { startsAt: startsAt.toJSDate(), sku },
     });
 
     return { ok: true, intent: "edit-session", message: "Session updated." };
@@ -525,12 +508,15 @@ export default function ClassDetail() {
   const shopifyLocationGid = shopifyLocations[0]?.id ?? "";
   const [title, setTitle] = useState(classProduct.title);
   const [locationId, setLocationId] = useState(classProduct.locationId ?? "");
-  const [durationMin, setDurationMin] = useState(
-    String(classProduct.durationMin),
+  const [defaultStartTime, setDefaultStartTime] = useState(
+    classProduct.defaultStartTime ?? DEFAULT_CLASS_START_TIME,
   );
   const [defaultCapacity, setDefaultCapacity] = useState(
     String(classProduct.defaultCapacity),
   );
+  const [dismissedImportVariantGids, setDismissedImportVariantGids] = useState<
+    string[]
+  >([]);
   const [importRows, setImportRows] =
     useState<ShopifyVariantImportCandidate[]>(importCandidates);
   const [newSessionBaselineRows, setNewSessionBaselineRows] = useState<
@@ -547,33 +533,20 @@ export default function ClassDetail() {
   const defaultCapacityNumber = Number(defaultCapacity);
   const importPayload = useMemo(
     () =>
-      importRows.map((row) => ({
-        variantGid: row.variantGid,
-        inventoryItemGid: row.inventoryItemGid,
-        sku: row.sku,
-        startsAt: DateTime.fromISO(`${row.date}T${row.time}`, {
-          zone: CLASS_TIMEZONE,
-        }).toISO(),
-        capacity: Number.isFinite(row.capacity)
-          ? row.capacity
-          : defaultCapacityNumber,
-      })),
-    [defaultCapacityNumber, importRows],
-  );
-  const baselineImportPayload = useMemo(
-    () =>
-      importCandidates.map((row) => ({
-        variantGid: row.variantGid,
-        inventoryItemGid: row.inventoryItemGid,
-        sku: row.sku,
-        startsAt: DateTime.fromISO(`${row.date}T${row.time}`, {
-          zone: CLASS_TIMEZONE,
-        }).toISO(),
-        capacity: Number.isFinite(row.capacity)
-          ? row.capacity
-          : classProduct.defaultCapacity,
-      })),
-    [classProduct.defaultCapacity, importCandidates],
+      importRows
+        .filter((row) => row.addToEvent)
+        .map((row) => ({
+          variantGid: row.variantGid,
+          inventoryItemGid: row.inventoryItemGid,
+          sku: row.sku,
+          startsAt: DateTime.fromISO(`${row.date}T${row.time}`, {
+            zone: CLASS_TIMEZONE,
+          }).toISO(),
+          capacity: Number.isFinite(defaultCapacityNumber)
+            ? defaultCapacityNumber
+            : classProduct.defaultCapacity,
+        })),
+    [classProduct.defaultCapacity, defaultCapacityNumber, importRows],
   );
   const activityItems = useMemo(
     () => buildClassActivityItems(classProduct, variantTitleById),
@@ -589,27 +562,39 @@ export default function ClassDetail() {
   const isDirty =
     title !== classProduct.title ||
     locationId !== (classProduct.locationId ?? "") ||
-    durationMin !== String(classProduct.durationMin) ||
+    defaultStartTime !==
+      (classProduct.defaultStartTime ?? DEFAULT_CLASS_START_TIME) ||
     defaultCapacity !== String(classProduct.defaultCapacity) ||
-    JSON.stringify(importPayload) !== JSON.stringify(baselineImportPayload) ||
+    importRows.some((row) => row.addToEvent) ||
     newSessionRowsDirty;
 
   useEffect(() => {
     setTitle(classProduct.title);
     setLocationId(classProduct.locationId ?? "");
-    setDurationMin(String(classProduct.durationMin));
+    setDefaultStartTime(
+      classProduct.defaultStartTime ?? DEFAULT_CLASS_START_TIME,
+    );
     setDefaultCapacity(String(classProduct.defaultCapacity));
   }, [
     classProduct.defaultCapacity,
-    classProduct.durationMin,
+    classProduct.defaultStartTime,
     classProduct.id,
     classProduct.locationId,
     classProduct.title,
   ]);
 
   useEffect(() => {
-    setImportRows(importCandidates);
-  }, [importCandidates]);
+    setImportRows((current) => {
+      const currentRowsById = new Map(
+        current.map((row) => [row.variantGid, row]),
+      );
+      return importCandidates
+        .filter(
+          (row) => !dismissedImportVariantGids.includes(row.variantGid),
+        )
+        .map((row) => currentRowsById.get(row.variantGid) ?? row);
+    });
+  }, [dismissedImportVariantGids, importCandidates]);
 
   useEffect(() => {
     const rows = buildDefaultNewSessionRows();
@@ -630,6 +615,7 @@ export default function ClassDetail() {
     setRefreshStatus("waiting");
     setRefreshHasLoaded(false);
     setShowNoNewClasses(false);
+    setDismissedImportVariantGids([]);
     revalidator.revalidate();
   }
 
@@ -669,11 +655,23 @@ export default function ClassDetail() {
   function discardChanges() {
     setTitle(classProduct.title);
     setLocationId(classProduct.locationId ?? "");
-    setDurationMin(String(classProduct.durationMin));
+    setDefaultStartTime(
+      classProduct.defaultStartTime ?? DEFAULT_CLASS_START_TIME,
+    );
     setDefaultCapacity(String(classProduct.defaultCapacity));
+    setDismissedImportVariantGids([]);
     setImportRows(importCandidates);
     setNewSessionRows(newSessionBaselineRows);
     setShowNoNewClasses(false);
+  }
+
+  function dismissImportVariant(variantGid: string) {
+    setDismissedImportVariantGids((current) =>
+      current.includes(variantGid) ? current : [...current, variantGid],
+    );
+    setImportRows((current) =>
+      current.filter((row) => row.variantGid !== variantGid),
+    );
   }
 
   return (
@@ -739,8 +737,8 @@ export default function ClassDetail() {
             locations={locations}
             locationId={locationId}
             setLocationId={setLocationId}
-            durationMin={durationMin}
-            setDurationMin={setDurationMin}
+            defaultStartTime={defaultStartTime}
+            setDefaultStartTime={setDefaultStartTime}
             defaultCapacity={defaultCapacity}
             setDefaultCapacity={setDefaultCapacity}
           />
@@ -749,8 +747,16 @@ export default function ClassDetail() {
             variantTitleById={variantTitleById}
             busy={busy}
           />
-          <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
-          <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
+          <ShopifyVariantImportCard
+            rows={importRows}
+            setRows={setImportRows}
+            onDismiss={dismissImportVariant}
+          />
+          <AddSessionsCard
+            rows={newSessionRows}
+            setRows={setNewSessionRows}
+            defaultStartTime={defaultStartTime}
+          />
         </div>
         <div className={styles.detailAside}>
           <ClassSummary
@@ -758,7 +764,7 @@ export default function ClassDetail() {
             title={title}
             locations={locations}
             locationId={locationId}
-            durationMin={durationMin}
+            defaultStartTime={defaultStartTime}
           />
         </div>
         <div className={styles.detailTimeline}>
@@ -770,7 +776,11 @@ export default function ClassDetail() {
         <input type="hidden" name="intent" value="save-class" />
         <input type="hidden" name="title" value={title} />
         <input type="hidden" name="locationId" value={locationId} />
-        <input type="hidden" name="durationMin" value={durationMin} />
+        <input
+          type="hidden"
+          name="defaultStartTime"
+          value={defaultStartTime}
+        />
         <input type="hidden" name="defaultCapacity" value={defaultCapacity} />
         <input
           type="hidden"
@@ -829,13 +839,13 @@ function ClassSummary({
   title,
   locations,
   locationId,
-  durationMin,
+  defaultStartTime,
 }: {
   classProduct: ClassProductWith;
   title: string;
   locations: { id: string; name: string }[];
   locationId: string;
-  durationMin: string;
+  defaultStartTime: string;
 }) {
   const now = new Date();
   const locationName =
@@ -850,11 +860,10 @@ function ClassSummary({
         : session.startsAt;
     return !session.cancelled && startsAt > now;
   }).length;
-  const duration = Number(durationMin);
-  const durationLabel = Number.isFinite(duration)
-    ? `${duration} minute${duration === 1 ? "" : "s"}`
-    : `${durationMin} minutes`;
   const statusLabel = formatStatusLabel(classProduct.status);
+  const defaultStartTimeLabel = sessionTimeLabel(
+    defaultStartTime || DEFAULT_CLASS_START_TIME,
+  );
 
   return (
     <s-box>
@@ -881,7 +890,9 @@ function ClassSummary({
             <s-heading>Details</s-heading>
             <s-unordered-list>
               <s-list-item>{locationName}</s-list-item>
-              <s-list-item>{durationLabel}</s-list-item>
+              <s-list-item>
+                Default start time: {defaultStartTimeLabel}
+              </s-list-item>
               <s-list-item>
                 {sessionCount} session{sessionCount === 1 ? "" : "s"}
               </s-list-item>
@@ -992,8 +1003,8 @@ function DefaultsCard({
   locations,
   locationId,
   setLocationId,
-  durationMin,
-  setDurationMin,
+  defaultStartTime,
+  setDefaultStartTime,
   defaultCapacity,
   setDefaultCapacity,
 }: {
@@ -1002,8 +1013,8 @@ function DefaultsCard({
   locations: { id: string; name: string }[];
   locationId: string;
   setLocationId: (value: string) => void;
-  durationMin: string;
-  setDurationMin: (value: string) => void;
+  defaultStartTime: string;
+  setDefaultStartTime: (value: string) => void;
   defaultCapacity: string;
   setDefaultCapacity: (value: string) => void;
 }) {
@@ -1033,18 +1044,18 @@ function DefaultsCard({
         </s-select>
         <s-grid gridTemplateColumns="1fr 1fr" gap="base">
           <s-select
-            label="Duration"
+            label="Default start time"
             icon="clock"
-            value={durationMin}
+            value={defaultStartTime}
             onChange={(e) =>
-              setDurationMin((e.target as HTMLSelectElement).value)
+              setDefaultStartTime((e.target as HTMLSelectElement).value)
             }
           >
-            <s-option value="30">30 min</s-option>
-            <s-option value="60">1 hour</s-option>
-            <s-option value="90">1 hr 30 min</s-option>
-            <s-option value="120">2 hours</s-option>
-            <s-option value="150">2 hr 30 min</s-option>
+            {SESSION_TIME_OPTIONS.map((option) => (
+              <s-option key={option.value} value={option.value}>
+                {option.label}
+              </s-option>
+            ))}
           </s-select>
           <s-number-field
             label="Seats per session"
@@ -1365,6 +1376,7 @@ function EditSessionModal({
 }) {
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState(defaultTime);
+  const todayIso = DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd");
 
   return (
     <Form method="post" className={styles.editSessionForm}>
@@ -1378,14 +1390,16 @@ function EditSessionModal({
           gap="base"
           justifyItems="stretch"
         >
-          <s-text-field
+          <s-date-field
             label="Date"
-            icon="calendar"
             placeholder="YYYY-MM-DD"
+            allow={`${todayIso}--`}
             value={date}
-            onChange={(event) =>
-              setDate((event.target as HTMLInputElement).value)
-            }
+            onChange={(event) => {
+              const nextDate = (event.target as HTMLInputElement).value;
+              if (nextDate && nextDate < todayIso) return;
+              setDate(nextDate);
+            }}
           />
           <s-select
             label="Start time"
@@ -1426,6 +1440,7 @@ function EditSessionModal({
 function ShopifyVariantImportCard({
   rows,
   setRows,
+  onDismiss,
 }: {
   rows: ShopifyVariantImportCandidate[];
   setRows: (
@@ -1433,64 +1448,130 @@ function ShopifyVariantImportCard({
       rows: ShopifyVariantImportCandidate[],
     ) => ShopifyVariantImportCandidate[],
   ) => void;
+  onDismiss: (variantGid: string) => void;
 }) {
+  const todayIso = DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd");
+
   if (rows.length === 0) return null;
 
   return (
-    <s-section heading={`New Shopify variants (${rows.length})`} padding="none">
-      <s-table>
-        <s-table-header-row>
-          <s-table-header listSlot="primary">Variant</s-table-header>
-          <s-table-header listSlot="labeled">Date</s-table-header>
-          <s-table-header listSlot="labeled">Start time (24h)</s-table-header>
-          <s-table-header format="numeric" listSlot="labeled">
-            Seats
-          </s-table-header>
-          <s-table-header listSlot="labeled">SKU</s-table-header>
-        </s-table-header-row>
-        <s-table-body>
-          {rows.map((row) => (
-            <s-table-row key={row.variantGid}>
-              <s-table-cell>{row.title}</s-table-cell>
-              <s-table-cell>
-                <s-date-field
-                  label="Date"
-                  labelAccessibilityVisibility="exclusive"
-                  value={row.date}
-                  onChange={(e) =>
-                    setRows((current) =>
-                      current.map((r) =>
-                        r.variantGid === row.variantGid
-                          ? { ...r, date: (e.target as HTMLInputElement).value }
-                          : r,
-                      ),
-                    )
-                  }
-                />
-              </s-table-cell>
-              <s-table-cell>
-                <s-text-field
-                  label="Start time (24h)"
-                  labelAccessibilityVisibility="exclusive"
-                  placeholder="15:00"
-                  value={row.time}
-                  onChange={(e) =>
-                    setRows((current) =>
-                      current.map((r) =>
-                        r.variantGid === row.variantGid
-                          ? { ...r, time: (e.target as HTMLInputElement).value }
-                          : r,
-                      ),
-                    )
-                  }
-                />
-              </s-table-cell>
-              <s-table-cell>{row.capacity}</s-table-cell>
-              <s-table-cell>{row.sku ?? ""}</s-table-cell>
-            </s-table-row>
-          ))}
-        </s-table-body>
-      </s-table>
+    <s-section accessibilityLabel="New Shopify variants">
+      <s-stack direction="block" gap="base">
+        <s-stack
+          direction="inline"
+          justifyContent="space-between"
+          alignItems="center"
+        >
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-icon type="info" color="subdued" />
+            <s-heading>New variants detected</s-heading>
+            <s-badge>{rows.length}</s-badge>
+          </s-stack>
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-text color="subdued">Seats use event default</s-text>
+          </s-stack>
+        </s-stack>
+        {rows.map((row, idx) => (
+          <s-stack key={row.variantGid} direction="block" gap="small-200">
+            {rows.length > 1 && idx > 0 ? <s-divider /> : null}
+            <s-grid
+              gridTemplateColumns="minmax(0, 1fr) auto"
+              gap="small-400"
+              alignItems="start"
+            >
+              <s-stack direction="block" gap="small-400">
+                <s-stack
+                  direction="inline"
+                  gap="small-200"
+                  alignItems="center"
+                >
+                  <s-text>{row.title}</s-text>
+                  <s-badge tone="info">New</s-badge>
+                </s-stack>
+                {row.sku ? <s-text color="subdued">{row.sku}</s-text> : null}
+              </s-stack>
+              <s-button
+                type="button"
+                variant="tertiary"
+                icon="menu-horizontal"
+                accessibilityLabel={`Actions for ${row.title}`}
+                commandFor={`import-variant-actions-${idx}`}
+              />
+              <s-menu
+                id={`import-variant-actions-${idx}`}
+                accessibilityLabel={`Actions for ${row.title}`}
+              >
+                <s-button icon="x" onClick={() => onDismiss(row.variantGid)}>
+                  Dismiss
+                </s-button>
+              </s-menu>
+            </s-grid>
+            <s-grid
+              id={`import-session-fields-${idx}`}
+              gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))"
+              gap="base"
+            >
+              <s-date-field
+                label="Date"
+                placeholder="YYYY-MM-DD"
+                allow={`${todayIso}--`}
+                value={row.date}
+                onChange={(e) => {
+                  const nextDate = (e.target as HTMLInputElement).value;
+                  if (nextDate && nextDate < todayIso) return;
+                  setRows((current) =>
+                    current.map((r) =>
+                      r.variantGid === row.variantGid
+                        ? { ...r, date: nextDate }
+                        : r,
+                    ),
+                  );
+                }}
+              />
+              <s-select
+                label="Start time"
+                icon="clock"
+                value={row.time}
+                onChange={(e) =>
+                  setRows((current) =>
+                    current.map((r) =>
+                      r.variantGid === row.variantGid
+                        ? {
+                            ...r,
+                            time: (e.target as HTMLSelectElement).value,
+                          }
+                        : r,
+                    ),
+                  )
+                }
+              >
+                {SESSION_TIME_OPTIONS.map((option) => (
+                  <s-option key={option.value} value={option.value}>
+                    {option.label}
+                  </s-option>
+                ))}
+              </s-select>
+            </s-grid>
+            <s-checkbox
+              name={`add-import-variant-${idx}`}
+              label="Add to event"
+              checked={row.addToEvent}
+              onChange={(event) =>
+                setRows((current) =>
+                  current.map((r) =>
+                    r.variantGid === row.variantGid
+                      ? {
+                          ...r,
+                          addToEvent: event.currentTarget.checked,
+                        }
+                      : r,
+                  ),
+                )
+              }
+            />
+          </s-stack>
+        ))}
+      </s-stack>
     </s-section>
   );
 }
@@ -1498,15 +1579,14 @@ function ShopifyVariantImportCard({
 function AddSessionsCard({
   rows,
   setRows,
+  defaultStartTime,
 }: {
   rows: NewSessionDraftRow[];
   setRows: Dispatch<SetStateAction<NewSessionDraftRow[]>>;
+  defaultStartTime: string;
 }) {
   const enabled = rows.length > 0;
   const todayIso = DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd");
-  const yesterdayIso = DateTime.fromISO(todayIso)
-    .minus({ days: 1 })
-    .toFormat("yyyy-LL-dd");
 
   return (
     <s-section accessibilityLabel="Add sessions">
@@ -1540,7 +1620,7 @@ function AddSessionsCard({
                   checked
                     ? current.length > 0
                       ? current
-                      : [buildNewSessionDraftRow()]
+                      : [buildNewSessionDraftRow(defaultStartTime)]
                     : [],
                 );
               }}
@@ -1552,58 +1632,65 @@ function AddSessionsCard({
           rows.map((row, idx) => (
             <s-grid
               key={idx}
-              gridTemplateColumns="@container (inline-size > 516px) minmax(0, 1fr) minmax(0, 1fr) auto, 1fr"
+              gridTemplateColumns="minmax(0, 1fr) auto"
               gap="small-400"
               alignItems="end"
             >
-              <s-date-field
-                label="Date"
-                labelAccessibilityVisibility={
-                  idx === 0 ? "visible" : "exclusive"
-                }
-                disallow={`--${yesterdayIso}`}
-                value={row.date}
-                onChange={(e) => {
-                  const nextDate = (e.target as HTMLInputElement).value;
-                  if (nextDate && nextDate < todayIso) return;
-                  setRows((rs) =>
-                    rs.map((r, i) =>
-                      i === idx
-                        ? {
-                            ...r,
-                            date: nextDate,
-                          }
-                        : r,
-                    ),
-                  );
-                }}
-              />
-              <s-select
-                label="Start time"
-                labelAccessibilityVisibility={
-                  idx === 0 ? "visible" : "exclusive"
-                }
-                icon="clock"
-                value={row.time}
-                onChange={(e) =>
-                  setRows((rs) =>
-                    rs.map((r, i) =>
-                      i === idx
-                        ? {
-                            ...r,
-                            time: (e.target as HTMLInputElement).value,
-                          }
-                        : r,
-                    ),
-                  )
-                }
+              <s-grid
+                id={`add-session-fields-${idx}`}
+                gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))"
+                gap="base"
               >
-                {SESSION_TIME_OPTIONS.map((option) => (
-                  <s-option key={option.value} value={option.value}>
-                    {option.label}
-                  </s-option>
-                ))}
-              </s-select>
+                <s-date-field
+                  label="Date"
+                  placeholder="YYYY-MM-DD"
+                  allow={`${todayIso}--`}
+                  labelAccessibilityVisibility={
+                    idx === 0 ? "visible" : "exclusive"
+                  }
+                  value={row.date}
+                  onChange={(e) => {
+                    const nextDate = (e.target as HTMLInputElement).value;
+                    if (nextDate && nextDate < todayIso) return;
+                    setRows((rs) =>
+                      rs.map((r, i) =>
+                        i === idx
+                          ? {
+                              ...r,
+                              date: nextDate,
+                            }
+                          : r,
+                      ),
+                    );
+                  }}
+                />
+                <s-select
+                  label="Start time"
+                  labelAccessibilityVisibility={
+                    idx === 0 ? "visible" : "exclusive"
+                  }
+                  icon="clock"
+                  value={row.time}
+                  onChange={(e) =>
+                    setRows((rs) =>
+                      rs.map((r, i) =>
+                        i === idx
+                          ? {
+                              ...r,
+                              time: (e.target as HTMLInputElement).value,
+                            }
+                          : r,
+                      ),
+                    )
+                  }
+                >
+                  {SESSION_TIME_OPTIONS.map((option) => (
+                    <s-option key={option.value} value={option.value}>
+                      {option.label}
+                    </s-option>
+                  ))}
+                </s-select>
+              </s-grid>
               <s-button-group accessibilityLabel="Session row actions">
                 <s-button
                   slot="secondary-actions"
@@ -1630,7 +1717,7 @@ function AddSessionsCard({
                   ...rs,
                   {
                     date: rs[rs.length - 1]?.date ?? "",
-                    time: rs[rs.length - 1]?.time ?? "15:00",
+                    time: rs[rs.length - 1]?.time ?? defaultStartTime,
                   },
                 ])
               }
@@ -1648,10 +1735,10 @@ function buildDefaultNewSessionRows(): NewSessionDraftRow[] {
   return [];
 }
 
-function buildNewSessionDraftRow(): NewSessionDraftRow {
+function buildNewSessionDraftRow(defaultStartTime: string): NewSessionDraftRow {
   return {
     date: DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd"),
-    time: "15:00",
+    time: defaultStartTime,
   };
 }
 
@@ -1669,7 +1756,7 @@ function buildNewSessionPayload(rows: NewSessionDraftRow[]): NewSessionInput[] {
 function buildImportCandidates(
   variants: NonNullable<Awaited<ReturnType<typeof getProduct>>>["variants"],
   sessions: { variantGid: string }[],
-  defaultCapacity: number,
+  defaultStartTime: string,
 ): ShopifyVariantImportCandidate[] {
   const existingVariantIds = new Set(sessions.map((s) => s.variantGid));
   const now = DateTime.now().setZone(CLASS_TIMEZONE);
@@ -1691,8 +1778,8 @@ function buildImportCandidates(
         sku: variant.sku,
         title: variant.title,
         date,
-        time: skuDateTime?.time ?? titleDateTime?.time ?? "15:00",
-        capacity: variant.inventoryQuantity ?? defaultCapacity,
+        time: skuDateTime?.time ?? titleDateTime?.time ?? defaultStartTime,
+        addToEvent: false,
       };
     })
     .filter(
