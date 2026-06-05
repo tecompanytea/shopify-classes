@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -76,6 +77,14 @@ type NewSessionDraftRow = {
 };
 
 type SessionSortField = "date" | "status" | "seats";
+type ClassActivityTone = "base" | "success" | "critical" | "caution";
+type ClassActivityIcon = "calendar" | "edit" | "product";
+type ClassActivityItem = {
+  message: string;
+  timestamp: DateTime;
+  tone?: ClassActivityTone;
+  icon?: ClassActivityIcon;
+};
 
 const SESSION_SORT_OPTIONS: Array<{
   field: SessionSortField;
@@ -570,6 +579,10 @@ export default function ClassDetail() {
       })),
     [classProduct.defaultCapacity, importCandidates],
   );
+  const activityItems = useMemo(
+    () => buildClassActivityItems(classProduct, variantTitleById),
+    [classProduct, variantTitleById],
+  );
   const newSessionRowsDirty =
     JSON.stringify(newSessionRows) !== JSON.stringify(newSessionBaselineRows);
   const newSessionPayload = useMemo(
@@ -747,6 +760,7 @@ export default function ClassDetail() {
         locationId={locationId}
         durationMin={durationMin}
       />
+      <ClassActivityTimeline items={activityItems} />
 
       <Form id={saveFormId} method="post">
         <input type="hidden" name="intent" value="save-class" />
@@ -873,6 +887,89 @@ function ClassSummary({
         </s-stack>
       </s-section>
     </s-box>
+  );
+}
+
+function ClassActivityTimeline({ items }: { items: ClassActivityItem[] }) {
+  let lastDate: string | null = null;
+
+  return (
+    <s-section heading="Timeline" accessibilityLabel="Class timeline">
+      {items.length > 0 ? (
+        <s-stack direction="block" gap="base">
+          {items.map((item, index) => {
+            const timestamp = item.timestamp.setZone(CLASS_TIMEZONE);
+            const dateLabel = timestamp.toLocaleString({
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            });
+            const showDate = dateLabel !== lastDate;
+            lastDate = dateLabel;
+
+            return (
+              <Fragment key={`${timestamp.toISO()}-${index}`}>
+                {showDate && (
+                  <s-grid
+                    gridTemplateColumns="30px 1fr 90px"
+                    columnGap="small"
+                    alignItems="start"
+                  >
+                    <s-box />
+                    <s-text color="subdued">{dateLabel}</s-text>
+                    <s-box />
+                  </s-grid>
+                )}
+                <s-grid
+                  gridTemplateColumns="30px 1fr 90px"
+                  columnGap="small"
+                  alignItems="start"
+                >
+                  <span className={styles.timelineIcon}>
+                    <TimelineMarker tone={item.tone} />
+                  </span>
+                  <s-stack
+                    direction="inline"
+                    gap="small-200"
+                    alignItems="center"
+                  >
+                    {item.icon ? (
+                      <s-icon type={item.icon} color="subdued" />
+                    ) : null}
+                    <s-text>{item.message}</s-text>
+                  </s-stack>
+                  <s-stack alignItems="end">
+                    <s-text color="subdued">
+                      {timestamp.toFormat("h:mm a")}
+                    </s-text>
+                  </s-stack>
+                </s-grid>
+              </Fragment>
+            );
+          })}
+        </s-stack>
+      ) : (
+        <s-text>No timeline events available.</s-text>
+      )}
+    </s-section>
+  );
+}
+
+function TimelineMarker({ tone }: { tone?: ClassActivityTone }) {
+  const bulletIcon = getTimelineBulletIcon(tone);
+
+  if (bulletIcon) {
+    return (
+      <span className={styles.timelineIconPolarisIcon}>
+        <s-icon type={bulletIcon.type} tone={bulletIcon.tone} />
+      </span>
+    );
+  }
+
+  return (
+    <span className={styles.timelineIconBase}>
+      <span className={styles.timelineIconBaseInner} />
+    </span>
   );
 }
 
@@ -1595,6 +1692,100 @@ function buildImportCandidates(
       });
       return aStartsAt.toMillis() - bStartsAt.toMillis();
     });
+}
+
+function buildClassActivityItems(
+  classProduct: ClassProductWith,
+  variantTitleById: Record<string, string>,
+): ClassActivityItem[] {
+  const items: ClassActivityItem[] = [];
+  const classCreatedAt = toClassDateTime(classProduct.createdAt);
+  const classUpdatedAt = toClassDateTime(classProduct.updatedAt);
+
+  if (classCreatedAt.isValid) {
+    items.push({
+      message: "Class created.",
+      timestamp: classCreatedAt,
+      tone: "success",
+      icon: "product",
+    });
+  }
+
+  if (isMeaningfullyLater(classUpdatedAt, classCreatedAt)) {
+    items.push({
+      message: "Class details updated.",
+      timestamp: classUpdatedAt,
+      tone: "base",
+      icon: "edit",
+    });
+  }
+
+  for (const session of classProduct.sessions) {
+    const startsAt =
+      typeof session.startsAt === "string"
+        ? session.startsAt
+        : session.startsAt.toISOString();
+    const sessionCreatedAt = toClassDateTime(session.createdAt);
+    const sessionUpdatedAt = toClassDateTime(session.updatedAt);
+    const variantTitle =
+      variantTitleById[session.variantGid] ??
+      formatSessionTitle(startsAt, CLASS_TIMEZONE);
+
+    if (sessionCreatedAt.isValid) {
+      items.push({
+        message: `Session added: ${variantTitle}.`,
+        timestamp: sessionCreatedAt,
+        tone: "base",
+        icon: "calendar",
+      });
+    }
+
+    if (session.cancelled) {
+      if (sessionUpdatedAt.isValid) {
+        items.push({
+          message: `Session cancelled: ${variantTitle}.`,
+          timestamp: sessionUpdatedAt,
+          tone: "critical",
+          icon: "calendar",
+        });
+      }
+    } else if (isMeaningfullyLater(sessionUpdatedAt, sessionCreatedAt)) {
+      items.push({
+        message: `Session updated: ${variantTitle}.`,
+        timestamp: sessionUpdatedAt,
+        tone: "base",
+        icon: "edit",
+      });
+    }
+  }
+
+  return items.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+}
+
+function toClassDateTime(value: Date | string): DateTime {
+  return typeof value === "string"
+    ? DateTime.fromISO(value, { zone: CLASS_TIMEZONE })
+    : DateTime.fromJSDate(value).setZone(CLASS_TIMEZONE);
+}
+
+function isMeaningfullyLater(later: DateTime, earlier: DateTime): boolean {
+  return (
+    later.isValid &&
+    earlier.isValid &&
+    later.toMillis() - earlier.toMillis() > 60_000
+  );
+}
+
+function getTimelineBulletIcon(tone?: ClassActivityTone) {
+  if (tone === "critical" || tone === "caution") {
+    return { type: "alert-circle" as const, tone };
+  }
+
+  if (tone === "success") {
+    return { type: "check-circle" as const, tone };
+  }
+
+  return null;
 }
 
 function productNumericId(gid: string): string {

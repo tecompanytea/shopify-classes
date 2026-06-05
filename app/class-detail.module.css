@@ -5,3 +5,49 @@ s-modal[id$="-edit"] s-select {
   display: block;
   inline-size: 100%;
 }
+
+.timelineIcon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 24px;
+  min-block-size: 24px;
+}
+
+.timelineIcon::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -40px;
+  inset-block-end: -30px;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  inline-size: 2px;
+  background-color: var(--p-color-border, #dfe3e8);
+  z-index: 0;
+}
+
+.timelineIconPolarisIcon {
+  position: relative;
+  z-index: 1;
+  background: var(--p-color-bg-surface, #ffffff);
+}
+
+.timelineIconBase {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 16px;
+  block-size: 16px;
+  background-color: var(--p-color-border, #dfe3e8);
+  border-radius: 3px;
+}
+
+.timelineIconBaseInner {
+  inline-size: 8px;
+  block-size: 8px;
+  background-color: var(--p-color-icon, #616161);
+  border-radius: 3px;
+}
