@@ -39,7 +39,7 @@ model ShopSettings {
   shop               String    @unique
   defaultTimezone    String    @default("America/New_York")
   defaultDurationMin Int       @default(60)
-  defaultCapacity    Int       @default(12)
+  defaultCapacity    Int       @default(8)
   defaultLocationId  String?
   defaultLocation    Location? @relation(fields: [defaultLocationId], references: [id])
   createdAt          DateTime  @default(now())
@@ -82,7 +82,7 @@ model ClassProduct {
   location          Location? @relation(fields: [locationId], references: [id])
   timezone          String    @default("America/New_York")
   durationMin       Int       @default(60)
-  defaultCapacity   Int       @default(12)
+  defaultCapacity   Int       @default(8)
   defaultPriceCents Int?
   notes             String?
   tags              String?

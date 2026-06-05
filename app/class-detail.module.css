@@ -1,0 +1,7 @@
+.editSessionForm s-text-field,
+.editSessionForm s-select,
+s-modal[id$="-edit"] s-text-field,
+s-modal[id$="-edit"] s-select {
+  display: block;
+  inline-size: 100%;
+}

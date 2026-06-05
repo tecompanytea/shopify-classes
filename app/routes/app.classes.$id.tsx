@@ -45,6 +45,7 @@ import {
   getShopCurrency,
   listShopifyLocations,
 } from "../.server/shopify/locations";
+import styles from "../class-detail.module.css";
 
 type ShopifyVariantImportCandidate = {
   variantGid: string;
@@ -84,6 +85,25 @@ const SESSION_SORT_OPTIONS: Array<{
   { field: "status", label: "Status" },
   { field: "seats", label: "Seats" },
 ];
+
+const SESSION_TIME_OPTIONS = Array.from({ length: 27 }, (_, index) => {
+  const totalMinutes = 8 * 60 + index * 30;
+  const hour = Math.floor(totalMinutes / 60);
+  const minute = totalMinutes % 60;
+  const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(
+    2,
+    "0",
+  )}`;
+  const labelHour = hour % 12 || 12;
+  const meridiem = hour < 12 ? "AM" : "PM";
+
+  return {
+    value,
+    label: `${labelHour}:${String(minute).padStart(2, "0")} ${meridiem}`,
+  };
+});
+
+type StatusBadgeTone = "success" | "info" | "critical";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -702,14 +722,6 @@ export default function ClassDetail() {
         <s-banner heading="No new classes found" tone="warning" />
       )}
 
-      <SessionsCard
-        classProduct={classProduct}
-        variantTitleById={variantTitleById}
-        busy={busy}
-      />
-      <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
-      <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
-
       <DefaultsCard
         title={title}
         setTitle={setTitle}
@@ -720,6 +732,20 @@ export default function ClassDetail() {
         setDurationMin={setDurationMin}
         defaultCapacity={defaultCapacity}
         setDefaultCapacity={setDefaultCapacity}
+      />
+      <SessionsCard
+        classProduct={classProduct}
+        variantTitleById={variantTitleById}
+        busy={busy}
+      />
+      <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
+      <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
+      <ClassSummary
+        classProduct={classProduct}
+        title={title}
+        locations={locations}
+        locationId={locationId}
+        durationMin={durationMin}
       />
 
       <Form id={saveFormId} method="post">
@@ -780,6 +806,76 @@ export default function ClassDetail() {
 
 type ClassProductWith = Awaited<ReturnType<typeof loader>>["classProduct"];
 
+function ClassSummary({
+  classProduct,
+  title,
+  locations,
+  locationId,
+  durationMin,
+}: {
+  classProduct: ClassProductWith;
+  title: string;
+  locations: { id: string; name: string }[];
+  locationId: string;
+  durationMin: string;
+}) {
+  const now = new Date();
+  const locationName =
+    locations.find((location) => location.id === locationId)?.name ??
+    classProduct.location?.name ??
+    "No location";
+  const sessionCount = classProduct.sessions.length;
+  const upcomingCount = classProduct.sessions.filter((session) => {
+    const startsAt =
+      typeof session.startsAt === "string"
+        ? new Date(session.startsAt)
+        : session.startsAt;
+    return !session.cancelled && startsAt > now;
+  }).length;
+  const duration = Number(durationMin);
+  const durationLabel = Number.isFinite(duration)
+    ? `${duration} minute${duration === 1 ? "" : "s"}`
+    : `${durationMin} minutes`;
+  const statusLabel = formatStatusLabel(classProduct.status);
+
+  return (
+    <s-box slot="aside">
+      <s-section
+        heading="Class summary"
+        accessibilityLabel="Class summary"
+      >
+        <s-stack direction="block" gap="large">
+          <s-stack
+            direction="inline"
+            gap="base"
+            alignItems="start"
+            justifyContent="space-between"
+          >
+            <s-text type="strong">{title || classProduct.title}</s-text>
+            <s-badge
+              color="base"
+              tone={statusBadgeTone(classProduct.status)}
+            >
+              {statusLabel}
+            </s-badge>
+          </s-stack>
+          <s-stack direction="block" gap="small">
+            <s-heading>Details</s-heading>
+            <s-unordered-list>
+              <s-list-item>{locationName}</s-list-item>
+              <s-list-item>{durationLabel}</s-list-item>
+              <s-list-item>
+                {sessionCount} session{sessionCount === 1 ? "" : "s"}
+              </s-list-item>
+              <s-list-item>{upcomingCount} upcoming</s-list-item>
+            </s-unordered-list>
+          </s-stack>
+        </s-stack>
+      </s-section>
+    </s-box>
+  );
+}
+
 function DefaultsCard({
   title,
   setTitle,
@@ -802,7 +898,10 @@ function DefaultsCard({
   setDefaultCapacity: (value: string) => void;
 }) {
   return (
-    <s-section slot="aside" heading="Event defaults">
+    <s-section
+      heading="Event defaults"
+      accessibilityLabel="Class event defaults"
+    >
       <s-stack direction="block" gap="base">
         <s-text-field
           label="Internal event name"
@@ -811,7 +910,7 @@ function DefaultsCard({
           onChange={(e) => setTitle((e.target as HTMLInputElement).value)}
         />
         <s-select
-          label="Display location"
+          label="Location"
           value={locationId}
           onChange={(e) => setLocationId((e.target as HTMLSelectElement).value)}
         >
@@ -823,15 +922,22 @@ function DefaultsCard({
           ))}
         </s-select>
         <s-grid gridTemplateColumns="1fr 1fr" gap="base">
-          <s-number-field
-            label="Duration (min)"
+          <s-select
+            label="Duration"
+            icon="clock"
             value={durationMin}
             onChange={(e) =>
-              setDurationMin((e.target as HTMLInputElement).value)
+              setDurationMin((e.target as HTMLSelectElement).value)
             }
-          />
+          >
+            <s-option value="30">30 min</s-option>
+            <s-option value="60">1 hour</s-option>
+            <s-option value="90">1 hr 30 min</s-option>
+            <s-option value="120">2 hours</s-option>
+            <s-option value="150">2 hr 30 min</s-option>
+          </s-select>
           <s-number-field
-            label="Capacity (seats)"
+            label="Seats per session"
             value={defaultCapacity}
             onChange={(e) =>
               setDefaultCapacity((e.target as HTMLInputElement).value)
@@ -964,17 +1070,14 @@ function SessionsCard({
       ) : (
         <s-table>
           {selectedSessionCount > 0 ? (
-            <s-box slot="filters" padding="small" background="strong">
+            <s-box
+              slot="filters"
+              padding="small"
+              background="strong"
+              borderRadius="base"
+            >
               <s-grid gridTemplateColumns="1fr auto" alignItems="center">
                 <s-stack direction="inline" gap="small" alignItems="center">
-                  <s-checkbox
-                    accessibilityLabel="Select all sessions"
-                    checked={allVisibleSelected}
-                    indeterminate={someVisibleSelected}
-                    onChange={(event) =>
-                      setVisibleSessionsSelected(event.currentTarget.checked)
-                    }
-                  />
                   <s-text type="strong">
                     {selectedSessionCount} selected
                   </s-text>
@@ -1038,19 +1141,17 @@ function SessionsCard({
             </s-grid>
           )}
           <s-table-header-row>
-            <s-table-header listSlot="primary">
-              <s-stack direction="inline" gap="small" alignItems="center">
-                <s-checkbox
-                  accessibilityLabel="Select all sessions"
-                  checked={allVisibleSelected}
-                  indeterminate={someVisibleSelected}
-                  onChange={(event) =>
-                    setVisibleSessionsSelected(event.currentTarget.checked)
-                  }
-                />
-                <s-text>Variant</s-text>
-              </s-stack>
+            <s-table-header listSlot="inline">
+              <s-checkbox
+                accessibilityLabel="Select all sessions"
+                checked={allVisibleSelected}
+                indeterminate={someVisibleSelected}
+                onChange={(event) =>
+                  setVisibleSessionsSelected(event.currentTarget.checked)
+                }
+              />
             </s-table-header>
+            <s-table-header listSlot="primary">Variant</s-table-header>
             <s-table-header listSlot="secondary">Status</s-table-header>
             <s-table-header listSlot="labeled">SKU</s-table-header>
             <s-table-header format="numeric" listSlot="labeled">
@@ -1073,29 +1174,25 @@ function SessionsCard({
                 displayTime,
               }) => {
                 const checkboxId = `session-${session.id}-checkbox`;
-                const editPopoverId = `session-${session.id}-edit`;
+                const editModalId = `session-${session.id}-edit`;
 
                 return (
                   <s-table-row key={session.id} clickDelegate={checkboxId}>
                     <s-table-cell>
-                      <s-stack
-                        direction="inline"
-                        gap="small"
-                        alignItems="center"
-                      >
-                        <s-checkbox
-                          id={checkboxId}
-                          accessibilityLabel={`Select ${variantTitle}`}
-                          checked={selectedSessionIds.has(session.id)}
-                          onChange={(event) =>
-                            setSessionSelected(
-                              session.id,
-                              event.currentTarget.checked,
-                            )
-                          }
-                        />
-                        <s-text>{variantTitle}</s-text>
-                      </s-stack>
+                      <s-checkbox
+                        id={checkboxId}
+                        accessibilityLabel={`Select ${variantTitle}`}
+                        checked={selectedSessionIds.has(session.id)}
+                        onChange={(event) =>
+                          setSessionSelected(
+                            session.id,
+                            event.currentTarget.checked,
+                          )
+                        }
+                      />
+                    </s-table-cell>
+                    <s-table-cell>
+                      <s-text>{variantTitle}</s-text>
                     </s-table-cell>
                     <s-table-cell>
                       {status === "Cancelled" ? (
@@ -1115,10 +1212,11 @@ function SessionsCard({
                         icon="edit"
                         variant="tertiary"
                         accessibilityLabel={`Edit ${variantTitle}`}
-                        commandFor={editPopoverId}
+                        commandFor={editModalId}
+                        command="--show"
                       />
-                      <EditSessionPopover
-                        id={editPopoverId}
+                      <EditSessionModal
+                        id={editModalId}
                         sessionId={session.id}
                         variantTitle={variantTitle}
                         defaultDate={editDate}
@@ -1137,7 +1235,7 @@ function SessionsCard({
   );
 }
 
-function EditSessionPopover({
+function EditSessionModal({
   id,
   sessionId,
   variantTitle,
@@ -1156,41 +1254,59 @@ function EditSessionPopover({
   const [time, setTime] = useState(defaultTime);
 
   return (
-    <s-popover id={id} inlineSize="320px">
-      <s-box padding="base">
-        <Form method="post">
-          <input type="hidden" name="intent" value="edit-session" />
-          <input type="hidden" name="sessionId" value={sessionId} />
-          <input type="hidden" name="date" value={date} />
-          <input type="hidden" name="time" value={time} />
-          <s-stack direction="block" gap="base">
-            <s-text type="strong">{variantTitle}</s-text>
-            <s-date-field
-              label="Date"
-              value={date}
-              onChange={(event) =>
-                setDate((event.target as HTMLInputElement).value)
-              }
-            />
-            <s-text-field
-              label="Time (24h)"
-              placeholder="15:00"
-              value={time}
-              onChange={(event) =>
-                setTime((event.target as HTMLInputElement).value)
-              }
-            />
-            <s-button
-              type="submit"
-              variant="primary"
-              loading={busy ? true : undefined}
-            >
-              Save
-            </s-button>
-          </s-stack>
-        </Form>
-      </s-box>
-    </s-popover>
+    <Form method="post" className={styles.editSessionForm}>
+      <input type="hidden" name="intent" value="edit-session" />
+      <input type="hidden" name="sessionId" value={sessionId} />
+      <input type="hidden" name="date" value={date} />
+      <input type="hidden" name="time" value={time} />
+      <s-modal id={id} heading={variantTitle} size="small-100">
+        <s-grid
+          gridTemplateColumns="repeat(2, minmax(0, 1fr))"
+          gap="base"
+          justifyItems="stretch"
+        >
+          <s-text-field
+            label="Date"
+            icon="calendar"
+            placeholder="YYYY-MM-DD"
+            value={date}
+            onChange={(event) =>
+              setDate((event.target as HTMLInputElement).value)
+            }
+          />
+          <s-select
+            label="Start time"
+            icon="clock"
+            value={time}
+            onChange={(event) =>
+              setTime((event.target as HTMLSelectElement).value)
+            }
+          >
+            {SESSION_TIME_OPTIONS.map((option) => (
+              <s-option key={option.value} value={option.value}>
+                {option.label}
+              </s-option>
+            ))}
+          </s-select>
+        </s-grid>
+        <s-button
+          slot="primary-action"
+          type="submit"
+          variant="primary"
+          loading={busy ? true : undefined}
+        >
+          Save
+        </s-button>
+        <s-button
+          slot="secondary-actions"
+          variant="secondary"
+          commandFor={id}
+          command="--hide"
+        >
+          Cancel
+        </s-button>
+      </s-modal>
+    </Form>
   );
 }
 
@@ -1274,31 +1390,49 @@ function AddSessionsCard({
   setRows: Dispatch<SetStateAction<NewSessionDraftRow[]>>;
 }) {
   const enabled = rows.length > 0;
+  const todayIso = DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd");
+  const yesterdayIso = DateTime.fromISO(todayIso)
+    .minus({ days: 1 })
+    .toFormat("yyyy-LL-dd");
 
   return (
-    <s-section heading="Add sessions">
+    <s-section accessibilityLabel="Add sessions">
       <s-stack direction="block" gap="base">
         <s-stack
           direction="inline"
           justifyContent="space-between"
           alignItems="center"
         >
-          <s-text>Add session</s-text>
-          <s-switch
-            label="Add session"
-            labelAccessibilityVisibility="exclusive"
-            checked={enabled}
-            onChange={(e) => {
-              const checked = (e.target as HTMLInputElement).checked;
-              setRows((current) =>
-                checked
-                  ? current.length > 0
-                    ? current
-                    : [buildNewSessionDraftRow()]
-                  : [],
-              );
-            }}
-          />
+          <s-heading>Add sessions</s-heading>
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            <s-stack direction="inline" gap="small-400" alignItems="center">
+              <s-text color="subdued">Creates variants on save</s-text>
+              <s-tooltip id="add-sessions-variants-tooltip">
+                Each session row is created as a Shopify product variant when
+                you save.
+              </s-tooltip>
+              <s-icon
+                type="info"
+                color="subdued"
+                interestFor="add-sessions-variants-tooltip"
+              />
+            </s-stack>
+            <s-switch
+              label="Add sessions"
+              labelAccessibilityVisibility="exclusive"
+              checked={enabled}
+              onChange={(e) => {
+                const checked = (e.target as HTMLInputElement).checked;
+                setRows((current) =>
+                  checked
+                    ? current.length > 0
+                      ? current
+                      : [buildNewSessionDraftRow()]
+                    : [],
+                );
+              }}
+            />
+          </s-stack>
         </s-stack>
 
         {enabled &&
@@ -1310,24 +1444,33 @@ function AddSessionsCard({
               alignItems="end"
             >
               <s-date-field
-                label={idx === 0 ? "Date" : undefined}
+                label="Date"
+                labelAccessibilityVisibility={
+                  idx === 0 ? "visible" : "exclusive"
+                }
+                disallow={`--${yesterdayIso}`}
                 value={row.date}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const nextDate = (e.target as HTMLInputElement).value;
+                  if (nextDate && nextDate < todayIso) return;
                   setRows((rs) =>
                     rs.map((r, i) =>
                       i === idx
                         ? {
                             ...r,
-                            date: (e.target as HTMLInputElement).value,
+                            date: nextDate,
                           }
                         : r,
                     ),
-                  )
-                }
+                  );
+                }}
               />
-              <s-text-field
-                label={idx === 0 ? "Start time (24h)" : undefined}
-                placeholder="15:00"
+              <s-select
+                label="Start time"
+                labelAccessibilityVisibility={
+                  idx === 0 ? "visible" : "exclusive"
+                }
+                icon="clock"
                 value={row.time}
                 onChange={(e) =>
                   setRows((rs) =>
@@ -1341,7 +1484,13 @@ function AddSessionsCard({
                     ),
                   )
                 }
-              />
+              >
+                {SESSION_TIME_OPTIONS.map((option) => (
+                  <s-option key={option.value} value={option.value}>
+                    {option.label}
+                  </s-option>
+                ))}
+              </s-select>
               <s-button-group accessibilityLabel="Session row actions">
                 <s-button
                   slot="secondary-actions"
@@ -1361,6 +1510,7 @@ function AddSessionsCard({
           <s-button-group accessibilityLabel="Session actions">
             <s-button
               slot="secondary-actions"
+              icon="plus"
               type="button"
               onClick={() =>
                 setRows((rs) => [
@@ -1372,7 +1522,7 @@ function AddSessionsCard({
                 ])
               }
             >
-              Add row
+              Add another session
             </s-button>
           </s-button-group>
         )}
@@ -1449,6 +1599,16 @@ function buildImportCandidates(
 
 function productNumericId(gid: string): string {
   return gid.split("/").pop() ?? "";
+}
+
+function formatStatusLabel(status: string): string {
+  return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Draft";
+}
+
+function statusBadgeTone(status: string): StatusBadgeTone {
+  if (status === "active") return "success";
+  if (status === "archived") return "critical";
+  return "info";
 }
 
 function shopifyMutationError(error: unknown): string {

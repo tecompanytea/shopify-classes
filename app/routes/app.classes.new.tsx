@@ -19,7 +19,7 @@ import { DateTime } from "luxon";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
-import { CLASS_TIMEZONE } from "../lib/class-config";
+import { CLASS_TIMEZONE, DEFAULT_CLASS_CAPACITY } from "../lib/class-config";
 import { allocateClassSessionSkus } from "../lib/class-skus.server";
 import { formatSessionTitle } from "../lib/sku";
 import { ensureSessionDateOption } from "../.server/shopify/products";
@@ -93,7 +93,9 @@ export const action = async ({
   const locationId = String(formData.get("locationId") ?? "");
   const shopifyLocationGid = String(formData.get("shopifyLocationGid") ?? "");
   const durationMin = Number(formData.get("durationMin") ?? 60);
-  const defaultCapacity = Number(formData.get("defaultCapacity") ?? 12);
+  const defaultCapacity = Number(
+    formData.get("defaultCapacity") ?? DEFAULT_CLASS_CAPACITY,
+  );
   const notes = String(formData.get("notes") ?? "").trim();
   const tags = normalizeTags(String(formData.get("tags") ?? ""));
   const sessionsJson = String(formData.get("sessions") ?? "[]");
@@ -703,7 +705,10 @@ export default function NewClassWizard() {
           <s-stack key={idx} direction="block" gap="small-200">
             <s-stack direction="inline" gap="base">
               <s-date-field
-                label={idx === 0 ? "Date" : undefined}
+                label="Date"
+                labelAccessibilityVisibility={
+                  idx === 0 ? "visible" : "exclusive"
+                }
                 value={row.date}
                 onChange={(e) =>
                   updateRow(setSessions, idx, {
@@ -712,7 +717,10 @@ export default function NewClassWizard() {
                 }
               />
               <s-text-field
-                label={idx === 0 ? "Start time (24h)" : undefined}
+                label="Start time (24h)"
+                labelAccessibilityVisibility={
+                  idx === 0 ? "visible" : "exclusive"
+                }
                 placeholder="15:00"
                 value={row.time}
                 onChange={(e) =>
@@ -722,7 +730,10 @@ export default function NewClassWizard() {
                 }
               />
               <s-number-field
-                label={idx === 0 ? "Capacity" : undefined}
+                label="Capacity"
+                labelAccessibilityVisibility={
+                  idx === 0 ? "visible" : "exclusive"
+                }
                 placeholder={String(defaultCapacity)}
                 value={row.capacity != null ? String(row.capacity) : ""}
                 onChange={(e) =>
