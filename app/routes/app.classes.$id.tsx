@@ -894,12 +894,14 @@ function ClassSummary({
   );
 }
 
-const TIMELINE_PAGE_SIZE = 15;
+const TIMELINE_PAGE_SIZE = 10;
 
 function ClassActivityTimeline({ items }: { items: ClassActivityItem[] }) {
-  const [visibleCount, setVisibleCount] = useState(TIMELINE_PAGE_SIZE);
-  const visibleItems = items.slice(0, visibleCount);
-  const remaining = items.length - visibleItems.length;
+  const [page, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(items.length / TIMELINE_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const start = currentPage * TIMELINE_PAGE_SIZE;
+  const visibleItems = items.slice(start, start + TIMELINE_PAGE_SIZE);
   let lastDate: string | null = null;
 
   return (
@@ -949,30 +951,24 @@ function ClassActivityTimeline({ items }: { items: ClassActivityItem[] }) {
                 </Fragment>
               );
             })}
-            {remaining > 0 && (
-              <s-grid
-                gridTemplateColumns="30px 1fr 90px"
-                columnGap="small"
-                alignItems="center"
-              >
-                <span className={styles.timelineIcon}>
-                  <button
-                    type="button"
-                    className={styles.timelineMoreButton}
-                    onClick={() =>
-                      setVisibleCount((count) => count + TIMELINE_PAGE_SIZE)
-                    }
-                    aria-label="Show older activity"
-                  >
-                    <s-icon type="chevron-down" />
-                  </button>
-                </span>
-                <s-text color="subdued">
-                  {remaining} older {remaining === 1 ? "event" : "events"}
-                </s-text>
-                <s-box />
-              </s-grid>
-            )}
+            <s-stack direction="inline" justifyContent="center">
+              <s-button-group gap="none" accessibilityLabel="Timeline pagination">
+                <s-button
+                  slot="secondary-actions"
+                  icon="chevron-left"
+                  accessibilityLabel="Previous"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                />
+                <s-button
+                  slot="secondary-actions"
+                  icon="chevron-right"
+                  accessibilityLabel="Next"
+                  disabled={currentPage >= pageCount - 1}
+                  onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                />
+              </s-button-group>
+            </s-stack>
           </>
         ) : (
           <s-text>No timeline events available.</s-text>
@@ -1267,7 +1263,6 @@ function SessionsCard({
             </s-table-header>
             <s-table-header listSlot="primary">Variant</s-table-header>
             <s-table-header listSlot="secondary">Status</s-table-header>
-            <s-table-header listSlot="labeled">SKU</s-table-header>
             <s-table-header format="numeric" listSlot="labeled">
               Seats
             </s-table-header>
@@ -1306,7 +1301,12 @@ function SessionsCard({
                       />
                     </s-table-cell>
                     <s-table-cell>
-                      <s-text>{variantTitle}</s-text>
+                      <s-stack direction="block" gap="small-400">
+                        <s-text>{variantTitle}</s-text>
+                        {session.sku ? (
+                          <s-text color="subdued">{session.sku}</s-text>
+                        ) : null}
+                      </s-stack>
                     </s-table-cell>
                     <s-table-cell>
                       {status === "Cancelled" ? (
@@ -1317,7 +1317,6 @@ function SessionsCard({
                         <s-badge>Past</s-badge>
                       )}
                     </s-table-cell>
-                    <s-table-cell>{session.sku}</s-table-cell>
                     <s-table-cell>{session.capacity}</s-table-cell>
                     <s-table-cell>{displayDate}</s-table-cell>
                     <s-table-cell>{displayTime}</s-table-cell>
@@ -1553,8 +1552,8 @@ function AddSessionsCard({
           rows.map((row, idx) => (
             <s-grid
               key={idx}
-              gridTemplateColumns="minmax(0, 1fr) minmax(0, 1fr) auto"
-              gap="base"
+              gridTemplateColumns="@container (inline-size > 516px) minmax(0, 1fr) minmax(0, 1fr) auto, 1fr"
+              gap="small-400"
               alignItems="end"
             >
               <s-date-field
