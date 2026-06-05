@@ -77,13 +77,9 @@ type NewSessionDraftRow = {
 };
 
 type SessionSortField = "date" | "status" | "seats";
-type ClassActivityTone = "base" | "success" | "critical" | "caution";
-type ClassActivityIcon = "calendar" | "edit" | "product";
 type ClassActivityItem = {
   message: string;
   timestamp: DateTime;
-  tone?: ClassActivityTone;
-  icon?: ClassActivityIcon;
 };
 
 const SESSION_SORT_OPTIONS: Array<{
@@ -735,32 +731,40 @@ export default function ClassDetail() {
         <s-banner heading="No new classes found" tone="warning" />
       )}
 
-      <DefaultsCard
-        title={title}
-        setTitle={setTitle}
-        locations={locations}
-        locationId={locationId}
-        setLocationId={setLocationId}
-        durationMin={durationMin}
-        setDurationMin={setDurationMin}
-        defaultCapacity={defaultCapacity}
-        setDefaultCapacity={setDefaultCapacity}
-      />
-      <SessionsCard
-        classProduct={classProduct}
-        variantTitleById={variantTitleById}
-        busy={busy}
-      />
-      <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
-      <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
-      <ClassSummary
-        classProduct={classProduct}
-        title={title}
-        locations={locations}
-        locationId={locationId}
-        durationMin={durationMin}
-      />
-      <ClassActivityTimeline items={activityItems} />
+      <div className={styles.detailLayout}>
+        <div className={styles.detailMain}>
+          <DefaultsCard
+            title={title}
+            setTitle={setTitle}
+            locations={locations}
+            locationId={locationId}
+            setLocationId={setLocationId}
+            durationMin={durationMin}
+            setDurationMin={setDurationMin}
+            defaultCapacity={defaultCapacity}
+            setDefaultCapacity={setDefaultCapacity}
+          />
+          <SessionsCard
+            classProduct={classProduct}
+            variantTitleById={variantTitleById}
+            busy={busy}
+          />
+          <ShopifyVariantImportCard rows={importRows} setRows={setImportRows} />
+          <AddSessionsCard rows={newSessionRows} setRows={setNewSessionRows} />
+        </div>
+        <div className={styles.detailAside}>
+          <ClassSummary
+            classProduct={classProduct}
+            title={title}
+            locations={locations}
+            locationId={locationId}
+            durationMin={durationMin}
+          />
+        </div>
+        <div className={styles.detailTimeline}>
+          <ClassActivityTimeline items={activityItems} />
+        </div>
+      </div>
 
       <Form id={saveFormId} method="post">
         <input type="hidden" name="intent" value="save-class" />
@@ -853,7 +857,7 @@ function ClassSummary({
   const statusLabel = formatStatusLabel(classProduct.status);
 
   return (
-    <s-box slot="aside">
+    <s-box>
       <s-section
         heading="Class summary"
         accessibilityLabel="Class summary"
@@ -890,82 +894,95 @@ function ClassSummary({
   );
 }
 
+const TIMELINE_PAGE_SIZE = 15;
+
 function ClassActivityTimeline({ items }: { items: ClassActivityItem[] }) {
+  const [visibleCount, setVisibleCount] = useState(TIMELINE_PAGE_SIZE);
+  const visibleItems = items.slice(0, visibleCount);
+  const remaining = items.length - visibleItems.length;
   let lastDate: string | null = null;
 
   return (
-    <s-section heading="Timeline" accessibilityLabel="Class timeline">
-      {items.length > 0 ? (
-        <s-stack direction="block" gap="base">
-          {items.map((item, index) => {
-            const timestamp = item.timestamp.setZone(CLASS_TIMEZONE);
-            const dateLabel = timestamp.toLocaleString({
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            });
-            const showDate = dateLabel !== lastDate;
-            lastDate = dateLabel;
+    <s-box paddingInline="base">
+      <s-stack direction="block" gap="base">
+        <s-heading>Timeline</s-heading>
+        {items.length > 0 ? (
+          <>
+            {visibleItems.map((item, index) => {
+              const timestamp = item.timestamp.setZone(CLASS_TIMEZONE);
+              const dateLabel = timestamp.toLocaleString({
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              });
+              const showDate = dateLabel !== lastDate;
+              lastDate = dateLabel;
 
-            return (
-              <Fragment key={`${timestamp.toISO()}-${index}`}>
-                {showDate && (
+              return (
+                <Fragment key={`${timestamp.toISO()}-${index}`}>
+                  {showDate && (
+                    <s-grid
+                      gridTemplateColumns="30px 1fr 90px"
+                      columnGap="small"
+                      alignItems="start"
+                    >
+                      <s-box />
+                      <s-text color="subdued">{dateLabel}</s-text>
+                      <s-box />
+                    </s-grid>
+                  )}
                   <s-grid
                     gridTemplateColumns="30px 1fr 90px"
                     columnGap="small"
                     alignItems="start"
                   >
-                    <s-box />
-                    <s-text color="subdued">{dateLabel}</s-text>
-                    <s-box />
-                  </s-grid>
-                )}
-                <s-grid
-                  gridTemplateColumns="30px 1fr 90px"
-                  columnGap="small"
-                  alignItems="start"
-                >
-                  <span className={styles.timelineIcon}>
-                    <TimelineMarker tone={item.tone} />
-                  </span>
-                  <s-stack
-                    direction="inline"
-                    gap="small-200"
-                    alignItems="center"
-                  >
-                    {item.icon ? (
-                      <s-icon type={item.icon} color="subdued" />
-                    ) : null}
+                    <span className={styles.timelineIcon}>
+                      <TimelineMarker />
+                    </span>
                     <s-text>{item.message}</s-text>
-                  </s-stack>
-                  <s-stack alignItems="end">
-                    <s-text color="subdued">
-                      {timestamp.toFormat("h:mm a")}
-                    </s-text>
-                  </s-stack>
-                </s-grid>
-              </Fragment>
-            );
-          })}
-        </s-stack>
-      ) : (
-        <s-text>No timeline events available.</s-text>
-      )}
-    </s-section>
+                    <s-stack alignItems="end">
+                      <s-text color="subdued">
+                        {timestamp.toFormat("h:mm a")}
+                      </s-text>
+                    </s-stack>
+                  </s-grid>
+                </Fragment>
+              );
+            })}
+            {remaining > 0 && (
+              <s-grid
+                gridTemplateColumns="30px 1fr 90px"
+                columnGap="small"
+                alignItems="center"
+              >
+                <span className={styles.timelineIcon}>
+                  <button
+                    type="button"
+                    className={styles.timelineMoreButton}
+                    onClick={() =>
+                      setVisibleCount((count) => count + TIMELINE_PAGE_SIZE)
+                    }
+                    aria-label="Show older activity"
+                  >
+                    <s-icon type="chevron-down" />
+                  </button>
+                </span>
+                <s-text color="subdued">
+                  {remaining} older {remaining === 1 ? "event" : "events"}
+                </s-text>
+                <s-box />
+              </s-grid>
+            )}
+          </>
+        ) : (
+          <s-text>No timeline events available.</s-text>
+        )}
+      </s-stack>
+    </s-box>
   );
 }
 
-function TimelineMarker({ tone }: { tone?: ClassActivityTone }) {
-  const bulletIcon = getTimelineBulletIcon(tone);
-
-  if (bulletIcon) {
-    return (
-      <span className={styles.timelineIconPolarisIcon}>
-        <s-icon type={bulletIcon.type} tone={bulletIcon.tone} />
-      </span>
-    );
-  }
-
+function TimelineMarker() {
   return (
     <span className={styles.timelineIconBase}>
       <span className={styles.timelineIconBaseInner} />
@@ -1703,20 +1720,13 @@ function buildClassActivityItems(
   const classUpdatedAt = toClassDateTime(classProduct.updatedAt);
 
   if (classCreatedAt.isValid) {
-    items.push({
-      message: "Class created.",
-      timestamp: classCreatedAt,
-      tone: "success",
-      icon: "product",
-    });
+    items.push({ message: "Class created.", timestamp: classCreatedAt });
   }
 
   if (isMeaningfullyLater(classUpdatedAt, classCreatedAt)) {
     items.push({
       message: "Class details updated.",
       timestamp: classUpdatedAt,
-      tone: "base",
-      icon: "edit",
     });
   }
 
@@ -1735,8 +1745,6 @@ function buildClassActivityItems(
       items.push({
         message: `Session added: ${variantTitle}.`,
         timestamp: sessionCreatedAt,
-        tone: "base",
-        icon: "calendar",
       });
     }
 
@@ -1745,16 +1753,12 @@ function buildClassActivityItems(
         items.push({
           message: `Session cancelled: ${variantTitle}.`,
           timestamp: sessionUpdatedAt,
-          tone: "critical",
-          icon: "calendar",
         });
       }
     } else if (isMeaningfullyLater(sessionUpdatedAt, sessionCreatedAt)) {
       items.push({
         message: `Session updated: ${variantTitle}.`,
         timestamp: sessionUpdatedAt,
-        tone: "base",
-        icon: "edit",
       });
     }
   }
@@ -1774,18 +1778,6 @@ function isMeaningfullyLater(later: DateTime, earlier: DateTime): boolean {
     earlier.isValid &&
     later.toMillis() - earlier.toMillis() > 60_000
   );
-}
-
-function getTimelineBulletIcon(tone?: ClassActivityTone) {
-  if (tone === "critical" || tone === "caution") {
-    return { type: "alert-circle" as const, tone };
-  }
-
-  if (tone === "success") {
-    return { type: "check-circle" as const, tone };
-  }
-
-  return null;
 }
 
 function productNumericId(gid: string): string {

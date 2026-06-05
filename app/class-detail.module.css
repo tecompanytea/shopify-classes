@@ -6,6 +6,44 @@ s-modal[id$="-edit"] s-select {
   inline-size: 100%;
 }
 
+/* Class detail layout: summary as a right rail on desktop, timeline always last.
+   Mirrors Shopify's order page (custom grid) so visual order is decoupled from
+   DOM order — on mobile the grid collapses to: main → summary → timeline. */
+.detailLayout {
+  display: grid;
+  gap: var(--p-space-400, 16px);
+  align-items: start;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-areas:
+    "main aside"
+    "timeline aside";
+}
+
+.detailMain {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: var(--p-space-400, 16px);
+}
+
+.detailAside {
+  grid-area: aside;
+}
+
+.detailTimeline {
+  grid-area: timeline;
+}
+
+@media (max-width: 768px) {
+  .detailLayout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "main"
+      "aside"
+      "timeline";
+  }
+}
+
 .timelineIcon {
   position: relative;
   display: flex;
@@ -27,10 +65,23 @@ s-modal[id$="-edit"] s-select {
   z-index: 0;
 }
 
-.timelineIconPolarisIcon {
+.timelineMoreButton {
   position: relative;
   z-index: 1;
-  background: var(--p-color-bg-surface, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--p-color-border, #dfe3e8);
+  cursor: pointer;
+}
+
+.timelineMoreButton:hover {
+  background-color: var(--p-color-border-hover, #c9cccf);
 }
 
 .timelineIconBase {
