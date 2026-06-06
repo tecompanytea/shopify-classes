@@ -30,7 +30,7 @@ See `tecompanytea/shopify-corporate-addresses` (skeleton ref) and `tecompanytea/
 ```bash
 cp .env.example .env       # fill in DATABASE_URL + DATABASE_URL_UNPOOLED
 npm install
-npm run setup              # prisma generate + db push
+npm run setup              # prisma generate + migrate deploy
 npm run dev                # shopify app dev
 ```
 
@@ -69,7 +69,8 @@ time it runs.
 - `npm run dev:store` — clean stale previews, load `.env.local`, and preview on `tecompany-dev`
 - `npm run dev:store:localhost` — same dev store, using Shopify localhost mode
 - `npm run build` — React Router production build
-- `npm run setup` — `prisma generate && prisma db push`
+- `npm run setup` — `prisma generate && prisma migrate deploy`
+- `npm run setup:push` — `prisma generate && prisma db push` for explicit local schema pushes
 - `npm run typecheck` — RR typegen + `tsc --noEmit`
 - `npm run lint` — eslint
 - `npm run deploy` — `shopify app deploy`
