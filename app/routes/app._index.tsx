@@ -183,152 +183,204 @@ export default function Bookings() {
       ) : (
         <s-section padding="none">
           <s-table>
-            <s-stack slot="filters" direction="block" gap="small-200">
-              <s-grid
-                gap="small-200"
-                gridTemplateColumns="auto auto"
-                justifyContent="space-between"
-                alignItems="center"
+            {selectedIds.length > 0 ? (
+              <s-box
+                slot="filters"
+                padding="small"
+                background="strong"
+                borderRadius="base"
               >
-                <s-stack direction="inline" alignItems="center">
-                  <s-clickable
-                    commandFor="bookings-scope-popover"
-                    paddingInline="small-200"
-                    paddingBlock="small-400"
-                    borderRadius="base"
-                  >
-                    <s-stack direction="inline" gap="small-400" alignItems="center">
-                      <s-text>{activeLabel}</s-text>
-                      <s-icon type="select" />
-                    </s-stack>
-                  </s-clickable>
-                  <s-popover
-                    id="bookings-scope-popover"
-                    onAfterShow={() => setScopeMenuReady(true)}
-                    onAfterHide={() => setScopeMenuReady(false)}
-                  >
-                    <s-box padding="small-400">
-                      <div
-                        style={{
-                          opacity: scopeMenuReady ? 1 : 0,
-                        }}
-                      >
-                        <s-stack direction="block" gap="small-500">
-                        {SCOPE_OPTIONS.map((option) => {
-                          const selected = option.scope === scope;
-                          return (
-                            <s-clickable
-                              key={option.scope}
-                              commandFor="bookings-scope-popover"
-                              command="--hide"
-                              onClick={() => {
-                                setScope(option.scope);
-                                revalidator.revalidate();
-                              }}
-                              paddingInline="small-200"
-                              paddingBlock="small-400"
-                              borderRadius="base"
-                            >
-                              <span className={styles.scopeOption}>
-                                <span
-                                  className={`${styles.scopeCheck}${
-                                    selected ? ` ${styles.scopeCheckSelected}` : ""
-                                  }`}
-                                >
-                                  <s-icon
-                                    type="check"
-                                    color={selected ? undefined : "subdued"}
-                                  />
-                                </span>
-                                <span
-                                  className={
-                                    selected ? styles.scopeLabelSelected : undefined
-                                  }
-                                >
-                                  {option.label}
-                                </span>
-                              </span>
-                            </s-clickable>
-                          );
-                        })}
-                        </s-stack>
-                      </div>
-                    </s-box>
-                  </s-popover>
-                </s-stack>
                 <s-stack direction="inline" gap="small-200" alignItems="center">
-                  {revalidator.state === "loading" ? (
-                    <s-spinner accessibilityLabel="Refreshing bookings" size="base" />
-                  ) : null}
                   <s-button
-                    icon="search"
                     variant="tertiary"
-                    accessibilityLabel="Search"
-                    onClick={() => {
-                      setSearchOpen((open) => !open);
-                      setQuery("");
-                    }}
-                  />
+                    commandFor="bookings-selection-menu"
+                  >
+                    {selectedIds.length} selected
+                  </s-button>
+                  <s-menu
+                    id="bookings-selection-menu"
+                    accessibilityLabel="Selection actions"
+                  >
+                    {!allVisibleSelected ? (
+                      <s-button onClick={toggleVisibleRows}>
+                        Select all {visibleRowIds.length} on page
+                      </s-button>
+                    ) : null}
+                    <s-button onClick={() => setSelectedIds([])}>
+                      Unselect all
+                    </s-button>
+                  </s-menu>
                   <s-button
-                    icon="sort"
-                    variant="tertiary"
-                    accessibilityLabel="Sort"
-                    commandFor="bookings-sort-popover"
-                  />
-                  <s-popover id="bookings-sort-popover">
-                    <s-stack direction="block" gap="none">
-                      <s-box padding="small">
-                        <s-choice-list
-                          label="Sort by"
-                          name="bookings-sort-by"
-                          values={[sortField]}
-                          onChange={(event) => {
-                            const next = event.currentTarget.values[0];
-                            if (next) setSortField(next as SortField);
-                          }}
-                        >
-                          {SORT_OPTIONS.map((option) => (
-                            <s-choice key={option.field} value={option.field}>
-                              {option.label}
-                            </s-choice>
-                          ))}
-                        </s-choice-list>
-                      </s-box>
-                      <s-divider />
-                      <s-box padding="small">
-                        <s-choice-list
-                          label="Order by"
-                          name="bookings-order-by"
-                          values={[sortDir]}
-                          onChange={(event) => {
-                            const next = event.currentTarget.values[0];
-                            if (next === "asc" || next === "desc") setSortDir(next);
-                          }}
-                        >
-                          <s-choice value="asc">
-                            {isDateSort ? "Oldest first" : "A–Z"}
-                          </s-choice>
-                          <s-choice value="desc">
-                            {isDateSort ? "Newest first" : "Z–A"}
-                          </s-choice>
-                        </s-choice-list>
-                      </s-box>
-                    </s-stack>
-                  </s-popover>
+                    variant="secondary"
+                    commandFor="bookings-mark-as-menu"
+                  >
+                    Mark as
+                  </s-button>
+                  <s-menu
+                    id="bookings-mark-as-menu"
+                    accessibilityLabel="Mark selected bookings as"
+                  >
+                    <s-button>Unfulfilled</s-button>
+                    <s-button>Fulfilled</s-button>
+                  </s-menu>
                 </s-stack>
-              </s-grid>
-              {searchOpen ? (
-                <s-search-field
-                  label="Search bookings"
-                  labelAccessibilityVisibility="exclusive"
-                  placeholder="Search by class, customer, or order"
-                  value={query}
-                  onInput={(event) =>
-                    setQuery((event.target as HTMLInputElement).value)
-                  }
-                />
-              ) : null}
-            </s-stack>
+              </s-box>
+            ) : (
+              <s-stack slot="filters" direction="block" gap="small-200">
+                <s-grid
+                  gap="small-200"
+                  gridTemplateColumns="auto auto"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <s-stack direction="inline" alignItems="center">
+                    <s-clickable
+                      commandFor="bookings-scope-popover"
+                      paddingInline="small-200"
+                      paddingBlock="small-400"
+                      borderRadius="base"
+                    >
+                      <s-stack
+                        direction="inline"
+                        gap="small-400"
+                        alignItems="center"
+                      >
+                        <s-text>{activeLabel}</s-text>
+                        <s-icon type="select" />
+                      </s-stack>
+                    </s-clickable>
+                    <s-popover
+                      id="bookings-scope-popover"
+                      onAfterShow={() => setScopeMenuReady(true)}
+                      onAfterHide={() => setScopeMenuReady(false)}
+                    >
+                      <s-box padding="small-400">
+                        <div
+                          style={{
+                            opacity: scopeMenuReady ? 1 : 0,
+                          }}
+                        >
+                          <s-stack direction="block" gap="small-500">
+                            {SCOPE_OPTIONS.map((option) => {
+                              const selected = option.scope === scope;
+                              return (
+                                <s-clickable
+                                  key={option.scope}
+                                  commandFor="bookings-scope-popover"
+                                  command="--hide"
+                                  onClick={() => {
+                                    setScope(option.scope);
+                                    revalidator.revalidate();
+                                  }}
+                                  paddingInline="small-200"
+                                  paddingBlock="small-400"
+                                  borderRadius="base"
+                                >
+                                  <span className={styles.scopeOption}>
+                                    <span
+                                      className={`${styles.scopeCheck}${
+                                        selected
+                                          ? ` ${styles.scopeCheckSelected}`
+                                          : ""
+                                      }`}
+                                    >
+                                      <s-icon
+                                        type="check"
+                                        color={selected ? undefined : "subdued"}
+                                      />
+                                    </span>
+                                    <span
+                                      className={
+                                        selected
+                                          ? styles.scopeLabelSelected
+                                          : undefined
+                                      }
+                                    >
+                                      {option.label}
+                                    </span>
+                                  </span>
+                                </s-clickable>
+                              );
+                            })}
+                          </s-stack>
+                        </div>
+                      </s-box>
+                    </s-popover>
+                  </s-stack>
+                  <s-stack direction="inline" gap="small-200" alignItems="center">
+                    {revalidator.state === "loading" ? (
+                      <s-spinner accessibilityLabel="Refreshing bookings" size="base" />
+                    ) : null}
+                    <s-button
+                      icon="search"
+                      variant="tertiary"
+                      accessibilityLabel="Search"
+                      onClick={() => {
+                        setSearchOpen((open) => !open);
+                        setQuery("");
+                      }}
+                    />
+                    <s-button
+                      icon="sort"
+                      variant="tertiary"
+                      accessibilityLabel="Sort"
+                      commandFor="bookings-sort-popover"
+                    />
+                    <s-popover id="bookings-sort-popover">
+                      <s-stack direction="block" gap="none">
+                        <s-box padding="small">
+                          <s-choice-list
+                            label="Sort by"
+                            name="bookings-sort-by"
+                            values={[sortField]}
+                            onChange={(event) => {
+                              const next = event.currentTarget.values[0];
+                              if (next) setSortField(next as SortField);
+                            }}
+                          >
+                            {SORT_OPTIONS.map((option) => (
+                              <s-choice key={option.field} value={option.field}>
+                                {option.label}
+                              </s-choice>
+                            ))}
+                          </s-choice-list>
+                        </s-box>
+                        <s-divider />
+                        <s-box padding="small">
+                          <s-choice-list
+                            label="Order by"
+                            name="bookings-order-by"
+                            values={[sortDir]}
+                            onChange={(event) => {
+                              const next = event.currentTarget.values[0];
+                              if (next === "asc" || next === "desc") setSortDir(next);
+                            }}
+                          >
+                            <s-choice value="asc">
+                              {isDateSort ? "Oldest first" : "A–Z"}
+                            </s-choice>
+                            <s-choice value="desc">
+                              {isDateSort ? "Newest first" : "Z–A"}
+                            </s-choice>
+                          </s-choice-list>
+                        </s-box>
+                      </s-stack>
+                    </s-popover>
+                  </s-stack>
+                </s-grid>
+                {searchOpen ? (
+                  <s-search-field
+                    label="Search bookings"
+                    labelAccessibilityVisibility="exclusive"
+                    placeholder="Search by class, customer, or order"
+                    value={query}
+                    onInput={(event) =>
+                      setQuery((event.target as HTMLInputElement).value)
+                    }
+                  />
+                ) : null}
+              </s-stack>
+            )}
             <s-table-header-row>
               <s-table-header listSlot="inline">
                 <s-checkbox
