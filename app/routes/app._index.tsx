@@ -159,6 +159,12 @@ export default function Bookings() {
     visibleRowIds.length > 0 && selectedVisibleCount === visibleRowIds.length;
   const someVisibleSelected =
     selectedVisibleCount > 0 && selectedVisibleCount < visibleRowIds.length;
+  const selectVisibleRows = () => {
+    setSelectedIds((current) =>
+      Array.from(new Set([...current, ...visibleRowIds])),
+    );
+  };
+  const clearSelectedRows = () => setSelectedIds([]);
   const toggleVisibleRows = () => {
     setSelectedIds((current) => {
       const visible = new Set(visibleRowIds);
@@ -172,6 +178,9 @@ export default function Bookings() {
         ? current.filter((selectedId) => selectedId !== id)
         : [...current, id],
     );
+  };
+  const stopRowClick = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation();
   };
 
   return (
@@ -202,13 +211,11 @@ export default function Bookings() {
                     accessibilityLabel="Selection actions"
                   >
                     {!allVisibleSelected ? (
-                      <s-button onClick={toggleVisibleRows}>
+                      <s-button onClick={selectVisibleRows}>
                         Select all {visibleRowIds.length} on page
                       </s-button>
                     ) : null}
-                    <s-button onClick={() => setSelectedIds([])}>
-                      Unselect all
-                    </s-button>
+                    <s-button onClick={clearSelectedRows}>Unselect all</s-button>
                   </s-menu>
                   <s-button
                     variant="secondary"
@@ -437,11 +444,12 @@ export default function Bookings() {
                       <button
                         type="button"
                         className={`${styles.orderNumber} ${styles.tightClassColumn}`}
-                        onClick={() =>
+                        onClick={(event) => {
+                          stopRowClick(event);
                           document
                             .getElementById(`class-product-link-${i}`)
-                            ?.click()
-                        }
+                            ?.click();
+                        }}
                       >
                         {r.classTitle}
                       </button>
@@ -450,6 +458,7 @@ export default function Bookings() {
                           id={`class-product-link-${i}`}
                           href={r.classProductHref}
                           target="_top"
+                          onClick={stopRowClick}
                         >
                           {`Open product ${r.classTitle}`}
                         </s-link>
@@ -462,9 +471,10 @@ export default function Bookings() {
                       <button
                         type="button"
                         className={styles.orderNumber}
-                        onClick={() =>
-                          document.getElementById(`order-link-${i}`)?.click()
-                        }
+                        onClick={(event) => {
+                          stopRowClick(event);
+                          document.getElementById(`order-link-${i}`)?.click();
+                        }}
                       >
                         {r.orderName}
                       </button>
@@ -473,6 +483,7 @@ export default function Bookings() {
                           id={`order-link-${i}`}
                           href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
                           target="_top"
+                          onClick={stopRowClick}
                         >
                           {`Open order ${r.orderName}`}
                         </s-link>
@@ -490,6 +501,7 @@ export default function Bookings() {
                               commandfor: `customer-${i}`,
                               command: "--toggle",
                             } as Record<string, string>)}
+                            onClick={stopRowClick}
                           >
                             <span className={styles.customerName}>
                               {r.customerName ?? r.email ?? "View customer"}
@@ -542,7 +554,10 @@ export default function Bookings() {
                                       alignItems="center"
                                       gap="base"
                                     >
-                                      <s-link href={`mailto:${r.email}`}>
+                                      <s-link
+                                        href={`mailto:${r.email}`}
+                                        onClick={stopRowClick}
+                                      >
                                         <span className={styles.popoverLine}>
                                           {r.email}
                                         </span>
@@ -559,13 +574,17 @@ export default function Bookings() {
                                         }
                                         accessibilityLabel={`Copy email ${r.email}`}
                                         interestFor={`copy-email-${i}`}
-                                        onClick={() => copyEmail(r.email!)}
+                                        onClick={(event) => {
+                                          stopRowClick(event);
+                                          copyEmail(r.email!);
+                                        }}
                                       />
                                     </s-stack>
                                     <s-button
                                       variant="secondary"
                                       href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
                                       target="_top"
+                                      onClick={stopRowClick}
                                     >
                                       View customer
                                     </s-button>
@@ -575,6 +594,7 @@ export default function Bookings() {
                                     variant="secondary"
                                     href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
                                     target="_top"
+                                    onClick={stopRowClick}
                                   >
                                     View customer
                                   </s-button>
