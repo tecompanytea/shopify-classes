@@ -106,6 +106,7 @@ export default function Bookings() {
   const [query, setQuery] = useState("");
   const [openCustomer, setOpenCustomer] = useState<number | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const activeLabel = SCOPE_OPTIONS.find((o) => o.scope === scope)!.label;
   const isDateSort = sortField === "classDate";
   const copyEmail = async (email: string) => {
@@ -150,6 +151,28 @@ export default function Bookings() {
             : r.locationName) ?? "";
       return dir * pick(a).localeCompare(pick(b));
     });
+  const visibleRowIds = visibleRows.map(bookingRowId);
+  const selectedVisibleCount = visibleRowIds.filter((id) =>
+    selectedIds.includes(id),
+  ).length;
+  const allVisibleSelected =
+    visibleRowIds.length > 0 && selectedVisibleCount === visibleRowIds.length;
+  const someVisibleSelected =
+    selectedVisibleCount > 0 && selectedVisibleCount < visibleRowIds.length;
+  const toggleVisibleRows = () => {
+    setSelectedIds((current) => {
+      const visible = new Set(visibleRowIds);
+      if (allVisibleSelected) return current.filter((id) => !visible.has(id));
+      return Array.from(new Set([...current, ...visibleRowIds]));
+    });
+  };
+  const toggleRow = (id: string) => {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((selectedId) => selectedId !== id)
+        : [...current, id],
+    );
+  };
 
   return (
     <s-page heading="Classes">
@@ -307,136 +330,195 @@ export default function Bookings() {
               ) : null}
             </s-stack>
             <s-table-header-row>
-              <s-table-header listSlot="primary">Class</s-table-header>
-              <s-table-header listSlot="labeled">Class date</s-table-header>
-              <s-table-header listSlot="labeled">Order</s-table-header>
-              <s-table-header listSlot="secondary">Customer</s-table-header>
-              <s-table-header format="numeric" listSlot="labeled">Seats</s-table-header>
-              <s-table-header listSlot="labeled">Location</s-table-header>
-              <s-table-header listSlot="labeled">Fulfillment status</s-table-header>
+              <s-table-header listSlot="inline">
+                <s-checkbox
+                  checked={allVisibleSelected}
+                  indeterminate={someVisibleSelected}
+                  disabled={visibleRowIds.length === 0}
+                  accessibilityLabel="Select all bookings"
+                  onChange={toggleVisibleRows}
+                />
+              </s-table-header>
+              <s-table-header listSlot="primary">
+                <span className={`${styles.nowrap} ${styles.tightClassColumn}`}>
+                  Class
+                </span>
+              </s-table-header>
+              <s-table-header listSlot="labeled">
+                <span className={styles.nowrap}>Class date</span>
+              </s-table-header>
+              <s-table-header listSlot="labeled">
+                <span className={styles.nowrap}>Order</span>
+              </s-table-header>
+              <s-table-header listSlot="secondary">
+                <span className={styles.nowrap}>Customer</span>
+              </s-table-header>
+              <s-table-header format="numeric" listSlot="labeled">
+                <span className={`${styles.nowrap} ${styles.tightSeatsColumn}`}>
+                  Seats
+                </span>
+              </s-table-header>
+              <s-table-header listSlot="labeled">
+                <span className={styles.nowrap}>Location</span>
+              </s-table-header>
+              <s-table-header listSlot="labeled">
+                <span className={styles.nowrap}>Fulfillment status</span>
+              </s-table-header>
             </s-table-header-row>
             <s-table-body>
-              {visibleRows.map((r, i) => (
-                <s-table-row key={`${r.orderId}-${r.lineItemId}`}>
-                  <s-table-cell>
-                    <button
-                      type="button"
-                      className={styles.orderNumber}
-                      onClick={() =>
-                        document.getElementById(`class-product-link-${i}`)?.click()
-                      }
-                    >
-                      {r.classTitle}
-                    </button>
-                    <span className={styles.srOnly}>
-                      <s-link
-                        id={`class-product-link-${i}`}
-                        href={r.classProductHref}
-                        target="_top"
+              {visibleRows.map((r, i) => {
+                const selectedId = bookingRowId(r);
+                const checkboxId = `booking-row-${i}-checkbox`;
+                const selected = selectedIds.includes(selectedId);
+
+                return (
+                  <s-table-row key={selectedId} clickDelegate={checkboxId}>
+                    <s-table-cell>
+                      <s-checkbox
+                        id={checkboxId}
+                        checked={selected}
+                        accessibilityLabel={`Select booking for ${r.classTitle}`}
+                        onChange={() => toggleRow(selectedId)}
+                      />
+                    </s-table-cell>
+                    <s-table-cell>
+                      <button
+                        type="button"
+                        className={`${styles.orderNumber} ${styles.tightClassColumn}`}
+                        onClick={() =>
+                          document
+                            .getElementById(`class-product-link-${i}`)
+                            ?.click()
+                        }
                       >
-                        {`Open product ${r.classTitle}`}
-                      </s-link>
-                    </span>
-                  </s-table-cell>
-                  <s-table-cell>
-                    {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
-                  </s-table-cell>
-                  <s-table-cell>
-                    <button
-                      type="button"
-                      className={styles.orderNumber}
-                      onClick={() =>
-                        document.getElementById(`order-link-${i}`)?.click()
-                      }
-                    >
-                      {r.orderName}
-                    </button>
-                    <span className={styles.srOnly}>
-                      <s-link
-                        id={`order-link-${i}`}
-                        href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
-                        target="_top"
+                        {r.classTitle}
+                      </button>
+                      <span className={styles.srOnly}>
+                        <s-link
+                          id={`class-product-link-${i}`}
+                          href={r.classProductHref}
+                          target="_top"
+                        >
+                          {`Open product ${r.classTitle}`}
+                        </s-link>
+                      </span>
+                    </s-table-cell>
+                    <s-table-cell>
+                      {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
+                    </s-table-cell>
+                    <s-table-cell>
+                      <button
+                        type="button"
+                        className={styles.orderNumber}
+                        onClick={() =>
+                          document.getElementById(`order-link-${i}`)?.click()
+                        }
                       >
-                        {`Open order ${r.orderName}`}
-                      </s-link>
-                    </span>
-                  </s-table-cell>
-                  <s-table-cell>
-                    {r.customerId ? (
-                      <>
-                        <button
-                          type="button"
-                          className={`${styles.customerActivator}${
-                            openCustomer === i ? ` ${styles.open}` : ""
-                          }`}
-                          {...({
-                            commandfor: `customer-${i}`,
-                            command: "--toggle",
-                          } as Record<string, string>)}
+                        {r.orderName}
+                      </button>
+                      <span className={styles.srOnly}>
+                        <s-link
+                          id={`order-link-${i}`}
+                          href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
+                          target="_top"
                         >
-                          <span className={styles.customerName}>
-                            {r.customerName ?? r.email ?? "View customer"}
-                          </span>
-                          <s-icon type="caret-down" size="base" color="base" />
-                        </button>
-                        <s-popover
-                          id={`customer-${i}`}
-                          minInlineSize="250px"
-                          onShow={() => setOpenCustomer(i)}
-                          onHide={() => setOpenCustomer(null)}
-                        >
-                          <s-box padding="small">
-                            <s-stack direction="block" gap="small" alignItems="stretch">
-                              <s-stack direction="block" gap="small-500">
-                                <s-heading>{r.customerName ?? "Customer"}</s-heading>
-                                {r.customerLocation ? (
-                                  <s-paragraph>
-                                    <span className={styles.popoverLine}>
-                                      {r.customerLocation}
-                                    </span>
-                                  </s-paragraph>
-                                ) : null}
-                                {r.customerOrdersCount != null ? (
-                                  <s-paragraph>
-                                    <span className={styles.popoverLine}>
-                                      {r.customerOrdersCount}{" "}
-                                      {r.customerOrdersCount === 1 ? "order" : "orders"}
-                                    </span>
-                                  </s-paragraph>
-                                ) : null}
-                              </s-stack>
-                              {r.email ? (
-                                <s-stack
-                                  direction="block"
-                                  gap="small"
-                                  alignItems="stretch"
-                                >
-                                  <s-stack
-                                    direction="inline"
-                                    justifyContent="space-between"
-                                    alignItems="center"
-                                    gap="base"
-                                  >
-                                    <s-link href={`mailto:${r.email}`}>
+                          {`Open order ${r.orderName}`}
+                        </s-link>
+                      </span>
+                    </s-table-cell>
+                    <s-table-cell>
+                      {r.customerId ? (
+                        <>
+                          <button
+                            type="button"
+                            className={`${styles.customerActivator}${
+                              openCustomer === i ? ` ${styles.open}` : ""
+                            }`}
+                            {...({
+                              commandfor: `customer-${i}`,
+                              command: "--toggle",
+                            } as Record<string, string>)}
+                          >
+                            <span className={styles.customerName}>
+                              {r.customerName ?? r.email ?? "View customer"}
+                            </span>
+                            <s-icon type="caret-down" size="base" color="base" />
+                          </button>
+                          <s-popover
+                            id={`customer-${i}`}
+                            minInlineSize="250px"
+                            onShow={() => setOpenCustomer(i)}
+                            onHide={() => setOpenCustomer(null)}
+                          >
+                            <s-box padding="small">
+                              <s-stack
+                                direction="block"
+                                gap="small"
+                                alignItems="stretch"
+                              >
+                                <s-stack direction="block" gap="small-500">
+                                  <s-heading>
+                                    {r.customerName ?? "Customer"}
+                                  </s-heading>
+                                  {r.customerLocation ? (
+                                    <s-paragraph>
                                       <span className={styles.popoverLine}>
-                                        {r.email}
+                                        {r.customerLocation}
                                       </span>
-                                    </s-link>
-                                    <s-tooltip id={`copy-email-${i}`}>
-                                      Copy email
-                                    </s-tooltip>
+                                    </s-paragraph>
+                                  ) : null}
+                                  {r.customerOrdersCount != null ? (
+                                    <s-paragraph>
+                                      <span className={styles.popoverLine}>
+                                        {r.customerOrdersCount}{" "}
+                                        {r.customerOrdersCount === 1
+                                          ? "order"
+                                          : "orders"}
+                                      </span>
+                                    </s-paragraph>
+                                  ) : null}
+                                </s-stack>
+                                {r.email ? (
+                                  <s-stack
+                                    direction="block"
+                                    gap="small"
+                                    alignItems="stretch"
+                                  >
+                                    <s-stack
+                                      direction="inline"
+                                      justifyContent="space-between"
+                                      alignItems="center"
+                                      gap="base"
+                                    >
+                                      <s-link href={`mailto:${r.email}`}>
+                                        <span className={styles.popoverLine}>
+                                          {r.email}
+                                        </span>
+                                      </s-link>
+                                      <s-tooltip id={`copy-email-${i}`}>
+                                        Copy email
+                                      </s-tooltip>
+                                      <s-button
+                                        variant="tertiary"
+                                        icon={
+                                          copiedEmail === r.email
+                                            ? "check"
+                                            : "clipboard"
+                                        }
+                                        accessibilityLabel={`Copy email ${r.email}`}
+                                        interestFor={`copy-email-${i}`}
+                                        onClick={() => copyEmail(r.email!)}
+                                      />
+                                    </s-stack>
                                     <s-button
-                                      variant="tertiary"
-                                      icon={
-                                        copiedEmail === r.email
-                                          ? "check"
-                                          : "clipboard"
-                                      }
-                                      accessibilityLabel={`Copy email ${r.email}`}
-                                      interestFor={`copy-email-${i}`}
-                                      onClick={() => copyEmail(r.email!)}
-                                    />
+                                      variant="secondary"
+                                      href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
+                                      target="_top"
+                                    >
+                                      View customer
+                                    </s-button>
                                   </s-stack>
+                                ) : (
                                   <s-button
                                     variant="secondary"
                                     href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
@@ -444,40 +526,36 @@ export default function Bookings() {
                                   >
                                     View customer
                                   </s-button>
-                                </s-stack>
-                              ) : (
-                                <s-button
-                                  variant="secondary"
-                                  href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
-                                  target="_top"
-                                >
-                                  View customer
-                                </s-button>
-                              )}
-                            </s-stack>
-                          </s-box>
-                        </s-popover>
-                      </>
-                    ) : (
-                      r.customerName ?? r.email ?? "—"
-                    )}
-                  </s-table-cell>
-                  <s-table-cell>{r.quantity}</s-table-cell>
-                  <s-table-cell>{r.locationName ?? "—"}</s-table-cell>
-                  <s-table-cell>
-                    {r.fulfillmentStatus ? (
-                      <s-badge
-                        tone={fulfillmentTone(r.fulfillmentStatus)}
-                        icon={fulfillmentIcon(r.fulfillmentStatus)}
-                      >
-                        {titleCase(r.fulfillmentStatus)}
-                      </s-badge>
-                    ) : (
-                      "—"
-                    )}
-                  </s-table-cell>
-                </s-table-row>
-              ))}
+                                )}
+                              </s-stack>
+                            </s-box>
+                          </s-popover>
+                        </>
+                      ) : (
+                        r.customerName ?? r.email ?? "—"
+                      )}
+                    </s-table-cell>
+                    <s-table-cell>
+                      <span className={styles.tightSeatsColumn}>{r.quantity}</span>
+                    </s-table-cell>
+                    <s-table-cell>
+                      {r.locationName ?? "—"}
+                    </s-table-cell>
+                    <s-table-cell>
+                      {r.fulfillmentStatus ? (
+                        <s-badge
+                          tone={fulfillmentTone(r.fulfillmentStatus)}
+                          icon={fulfillmentIcon(r.fulfillmentStatus)}
+                        >
+                          {titleCase(r.fulfillmentStatus)}
+                        </s-badge>
+                      ) : (
+                        "—"
+                      )}
+                    </s-table-cell>
+                  </s-table-row>
+                );
+              })}
             </s-table-body>
           </s-table>
         </s-section>
@@ -492,6 +570,10 @@ function emptyMessage(scope: Scope): string {
   }
   if (scope === "past") return "No past bookings.";
   return "No bookings yet. They appear here as customers check out on your class sessions.";
+}
+
+function bookingRowId(row: BookingTableRow): string {
+  return `${row.orderId}:${row.lineItemId}`;
 }
 
 // Shopify display status enums (e.g. PARTIALLY_REFUNDED) → "Partially refunded".

@@ -13,10 +13,26 @@
   font-weight: 600;
   margin: 0;
   padding: 0;
+  text-align: start;
+  white-space: nowrap;
 }
 
 .orderNumber:hover {
   text-decoration: underline;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.tightClassColumn {
+  display: inline-block;
+  margin-inline-start: -12px;
+}
+
+.tightSeatsColumn {
+  display: inline-block;
+  margin-inline-start: -16px;
 }
 
 /* Custom popover trigger: a plain button styled as inline text (name + chevron
