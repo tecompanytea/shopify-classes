@@ -391,9 +391,9 @@ export default function Bookings() {
             <s-table-header-row>
               <s-table-header listSlot="inline">
                 <s-checkbox
-                  checked={allVisibleSelected}
-                  indeterminate={someVisibleSelected}
-                  disabled={visibleRowIds.length === 0}
+                  {...(allVisibleSelected ? { checked: true } : {})}
+                  {...(someVisibleSelected ? { indeterminate: true } : {})}
+                  {...(visibleRowIds.length === 0 ? { disabled: true } : {})}
                   accessibilityLabel="Select all bookings"
                   onChange={toggleVisibleRows}
                 />
@@ -435,7 +435,7 @@ export default function Bookings() {
                     <s-table-cell>
                       <s-checkbox
                         id={checkboxId}
-                        checked={selected}
+                        {...(selected ? { checked: true } : {})}
                         accessibilityLabel={`Select booking for ${r.classTitle}`}
                         onChange={() => toggleRow(selectedId)}
                       />
