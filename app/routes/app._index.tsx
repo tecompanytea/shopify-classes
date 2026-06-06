@@ -386,7 +386,7 @@ export default function Bookings() {
                           onHide={() => setOpenCustomer(null)}
                         >
                           <s-box padding="small">
-                            <s-stack direction="block" gap="small">
+                            <s-stack direction="block" gap="small" alignItems="stretch">
                               <s-stack direction="block" gap="small-500">
                                 <s-heading>{r.customerName ?? "Customer"}</s-heading>
                                 {r.customerLocation ? (
@@ -406,7 +406,11 @@ export default function Bookings() {
                                 ) : null}
                               </s-stack>
                               {r.email ? (
-                                <s-stack direction="block" gap="small">
+                                <s-stack
+                                  direction="block"
+                                  gap="small"
+                                  alignItems="stretch"
+                                >
                                   <s-stack
                                     direction="inline"
                                     justifyContent="space-between"
