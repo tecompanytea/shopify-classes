@@ -179,10 +179,6 @@ export default function Bookings() {
         : [...current, id],
     );
   };
-  const stopRowClick = (event: { stopPropagation: () => void }) => {
-    event.stopPropagation();
-  };
-
   return (
     <s-page heading="Classes">
       {rows.length === 0 ? (
@@ -431,7 +427,7 @@ export default function Bookings() {
                 const selected = selectedIds.includes(selectedId);
 
                 return (
-                  <s-table-row key={selectedId} clickDelegate={checkboxId}>
+                  <s-table-row key={selectedId}>
                     <s-table-cell>
                       <s-checkbox
                         id={checkboxId}
@@ -444,8 +440,7 @@ export default function Bookings() {
                       <button
                         type="button"
                         className={`${styles.orderNumber} ${styles.tightClassColumn}`}
-                        onClick={(event) => {
-                          stopRowClick(event);
+                        onClick={() => {
                           document
                             .getElementById(`class-product-link-${i}`)
                             ?.click();
@@ -458,7 +453,6 @@ export default function Bookings() {
                           id={`class-product-link-${i}`}
                           href={r.classProductHref}
                           target="_top"
-                          onClick={stopRowClick}
                         >
                           {`Open product ${r.classTitle}`}
                         </s-link>
@@ -471,8 +465,7 @@ export default function Bookings() {
                       <button
                         type="button"
                         className={styles.orderNumber}
-                        onClick={(event) => {
-                          stopRowClick(event);
+                        onClick={() => {
                           document.getElementById(`order-link-${i}`)?.click();
                         }}
                       >
@@ -483,7 +476,6 @@ export default function Bookings() {
                           id={`order-link-${i}`}
                           href={`shopify://admin/orders/${r.orderId.split("/").pop()}`}
                           target="_top"
-                          onClick={stopRowClick}
                         >
                           {`Open order ${r.orderName}`}
                         </s-link>
@@ -501,7 +493,6 @@ export default function Bookings() {
                               commandfor: `customer-${i}`,
                               command: "--toggle",
                             } as Record<string, string>)}
-                            onClick={stopRowClick}
                           >
                             <span className={styles.customerName}>
                               {r.customerName ?? r.email ?? "View customer"}
@@ -554,10 +545,7 @@ export default function Bookings() {
                                       alignItems="center"
                                       gap="base"
                                     >
-                                      <s-link
-                                        href={`mailto:${r.email}`}
-                                        onClick={stopRowClick}
-                                      >
+                                      <s-link href={`mailto:${r.email}`}>
                                         <span className={styles.popoverLine}>
                                           {r.email}
                                         </span>
@@ -574,27 +562,27 @@ export default function Bookings() {
                                         }
                                         accessibilityLabel={`Copy email ${r.email}`}
                                         interestFor={`copy-email-${i}`}
-                                        onClick={(event) => {
-                                          stopRowClick(event);
-                                          copyEmail(r.email!);
-                                        }}
+                                        onClick={() => copyEmail(r.email!)}
                                       />
                                     </s-stack>
+                                    {/* Required for the native button to fill this popover; the
+                                        current Shopify validator rejects it, but installed Polaris
+                                        types and runtime support it. */}
                                     <s-button
+                                      inlineSize="fill"
                                       variant="secondary"
                                       href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
                                       target="_top"
-                                      onClick={stopRowClick}
                                     >
                                       View customer
                                     </s-button>
                                   </s-stack>
                                 ) : (
                                   <s-button
+                                    inlineSize="fill"
                                     variant="secondary"
                                     href={`shopify://admin/customers/${r.customerId.split("/").pop()}`}
                                     target="_top"
-                                    onClick={stopRowClick}
                                   >
                                     View customer
                                   </s-button>
