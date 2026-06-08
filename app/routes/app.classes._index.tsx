@@ -6,7 +6,6 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { getOrCreateShopSettings } from "../lib/settings.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
-import styles from "../booking-table.module.css";
 
 type ClassRow = {
   id: string;
@@ -19,6 +18,19 @@ type ClassRow = {
   nextSessionAt: string | null;
   href: string;
 };
+
+const eventNameLinkStyle = {
+  color: "var(--p-color-text, #303030)",
+  cursor: "pointer",
+  display: "inline-block",
+  font: "inherit",
+  fontWeight: 600,
+  margin: 0,
+  padding: 0,
+  textAlign: "start",
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+} as const;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -121,31 +133,19 @@ export default function ClassesIndex() {
             </s-table-header-row>
             <s-table-body>
               {rows.map((row) => {
-                const classLinkId = `class-link-${row.id}`;
                 const classDetailLinkId = `class-detail-link-${row.id}`;
 
                 return (
                   <s-table-row key={row.id} clickDelegate={classDetailLinkId}>
                     <s-table-cell>
-                      <button
-                        id={classLinkId}
-                        type="button"
-                        className={styles.orderNumber}
-                        onClick={() =>
-                          document.getElementById(classDetailLinkId)?.click()
-                        }
+                      <a
+                        id={classDetailLinkId}
+                        href={row.href}
+                        target="_top"
+                        style={eventNameLinkStyle}
                       >
                         {row.title}
-                      </button>
-                      <span className={styles.srOnly}>
-                        <s-link
-                          id={classDetailLinkId}
-                          href={row.href}
-                          target="_top"
-                        >
-                          {`Open event ${row.title}`}
-                        </s-link>
-                      </span>
+                      </a>
                     </s-table-cell>
                     <s-table-cell>
                       <s-badge
