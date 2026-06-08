@@ -15,6 +15,7 @@ import {
   Form,
   redirect,
   useActionData,
+  useFetcher,
   useLoaderData,
   useNavigation,
   useRevalidator,
@@ -44,7 +45,6 @@ import {
   deleteVariants,
   setInventoryAtLocation,
   updateSessionVariant,
-  updateVariantSkus,
   type SessionDraft,
 } from "../.server/shopify/variants";
 import {
@@ -53,6 +53,8 @@ import {
 } from "../.server/shopify/locations";
 import styles from "../class-detail.module.css";
 
+type ShopifyVariantImportStatus = "ready" | "needs-time" | "needs-date";
+
 type ShopifyVariantImportCandidate = {
   variantGid: string;
   inventoryItemGid: string | null;
@@ -60,6 +62,7 @@ type ShopifyVariantImportCandidate = {
   title: string;
   date: string;
   time: string;
+  status: ShopifyVariantImportStatus;
   addToEvent: boolean;
 };
 
@@ -67,7 +70,7 @@ type ImportSessionInput = {
   variantGid?: string;
   inventoryItemGid?: string | null;
   sku?: string | null;
-  startsAt?: string;
+  startsAt?: string | null;
   capacity?: number;
 };
 
@@ -144,7 +147,11 @@ type ActionData =
   | { error: string }
   | {
       ok: true;
-      intent: "save-class" | "remove-session" | "edit-session";
+      intent:
+        | "save-class"
+        | "remove-session"
+        | "edit-session"
+        | "sync-ready-variants";
       message: string;
     };
 
@@ -161,6 +168,146 @@ export const action = async ({
     where: { id, shop: session.shop },
   });
   if (!classProduct) throw new Response("Not found", { status: 404 });
+
+  if (intent === "sync-ready-variants") {
+    let parsed: ImportSessionInput[];
+    try {
+      parsed = JSON.parse(String(form.get("sessions") ?? "[]"));
+    } catch {
+      return { error: "Couldn't read Shopify variants." };
+    }
+    if (!Array.isArray(parsed)) {
+      return { error: "Couldn't read Shopify variants." };
+    }
+    if (parsed.length === 0) {
+      return {
+        ok: true,
+        intent: "sync-ready-variants",
+        message: "No ready variants to add.",
+      };
+    }
+
+    const product = await getProduct(admin, classProduct.productGid);
+    if (!product) return { error: "Shopify product not found." };
+
+    const productVariants = new Map(product.variants.map((v) => [v.id, v]));
+    const existingSessions = await db.classSession.findMany({
+      where: { classProductId: classProduct.id },
+      select: { variantGid: true },
+    });
+    const existingVariantIds = new Set(
+      existingSessions.map((s) => s.variantGid),
+    );
+    let invalidSessionTime = false;
+
+    const linkedRows = parsed
+      .map((input) => {
+        if (!input.variantGid) return null;
+        if (!input.startsAt) {
+          invalidSessionTime = true;
+          return null;
+        }
+        if (existingVariantIds.has(input.variantGid)) return null;
+
+        const variant = productVariants.get(input.variantGid);
+        if (!variant) return null;
+
+        const startsAt = DateTime.fromISO(input.startsAt, {
+          zone: CLASS_TIMEZONE,
+        });
+        if (!startsAt.isValid) {
+          invalidSessionTime = true;
+          return null;
+        }
+
+        const capacity = Number(
+          input.capacity ?? classProduct.defaultCapacity,
+        );
+        return {
+          classProductId: classProduct.id,
+          shop: session.shop,
+          variantGid: variant.id,
+          inventoryItemGid:
+            variant.inventoryItemId ?? input.inventoryItemGid ?? null,
+          startsAt: startsAt.toJSDate(),
+          timezone: CLASS_TIMEZONE,
+          capacity: Number.isFinite(capacity)
+            ? capacity
+            : classProduct.defaultCapacity,
+          priceCents: null,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    if (invalidSessionTime) {
+      return { error: "Enter a valid date and 24-hour time (e.g. 09:30)." };
+    }
+    if (linkedRows.length === 0) {
+      return {
+        ok: true,
+        intent: "sync-ready-variants",
+        message: "No ready variants to add.",
+      };
+    }
+
+    const skus = await allocateClassSessionSkus(
+      db,
+      session.shop,
+      linkedRows.length,
+    );
+    const linkedRowsWithSkus = linkedRows.map((row, index) => ({
+      ...row,
+      sku: skus[index],
+      displayName: formatSessionTitle(
+        row.startsAt.toISOString(),
+        CLASS_TIMEZONE,
+      ),
+    }));
+
+    try {
+      const option = await ensureSessionDateOption(
+        admin,
+        classProduct.productGid,
+      );
+      if (!option)
+        return { error: "Couldn't prepare the product date option." };
+
+      await Promise.all(
+        linkedRowsWithSkus.map((row) =>
+          updateSessionVariant(admin, {
+            productGid: classProduct.productGid,
+            variantId: row.variantGid,
+            displayName: row.displayName,
+            sku: row.sku,
+            option,
+          }),
+        ),
+      );
+    } catch (error) {
+      return { error: shopifyMutationError(error) };
+    }
+
+    await db.classSession.createMany({
+      data: linkedRowsWithSkus.map((row) => ({
+        classProductId: row.classProductId,
+        shop: row.shop,
+        variantGid: row.variantGid,
+        inventoryItemGid: row.inventoryItemGid,
+        sku: row.sku,
+        startsAt: row.startsAt,
+        timezone: row.timezone,
+        capacity: row.capacity,
+        priceCents: row.priceCents,
+      })),
+      skipDuplicates: true,
+    });
+
+    return {
+      ok: true,
+      intent: "sync-ready-variants",
+      message: `Added ${linkedRowsWithSkus.length} ready variant${linkedRowsWithSkus.length === 1 ? "" : "s"}.`,
+    };
+  }
 
   if (intent === "save-class") {
     const title = String(form.get("title") ?? classProduct.title).trim();
@@ -294,6 +441,10 @@ export const action = async ({
     const linkedRowsWithSkus = linkedRows.map((row) => ({
       ...row,
       sku: skus[skuIndex++],
+      displayName: formatSessionTitle(
+        row.startsAt.toISOString(),
+        CLASS_TIMEZONE,
+      ),
     }));
     const newSessionDrafts: SessionDraft[] = newSessionInputs.map((input) => {
       const startsAtIso = input.startsAt.toISO()!;
@@ -367,13 +518,24 @@ export const action = async ({
 
     if (linkedRowsWithSkus.length > 0) {
       try {
-        await updateVariantSkus(admin, {
-          productGid: classProduct.productGid,
-          variants: linkedRowsWithSkus.map((row) => ({
-            variantId: row.variantGid,
-            sku: row.sku,
-          })),
-        });
+        const option = await ensureSessionDateOption(
+          admin,
+          classProduct.productGid,
+        );
+        if (!option)
+          return { error: "Couldn't prepare the product date option." };
+
+        await Promise.all(
+          linkedRowsWithSkus.map((row) =>
+            updateSessionVariant(admin, {
+              productGid: classProduct.productGid,
+              variantId: row.variantGid,
+              displayName: row.displayName,
+              sku: row.sku,
+              option,
+            }),
+          ),
+        );
       } catch (error) {
         return { error: shopifyMutationError(error) };
       }
@@ -499,6 +661,7 @@ export default function ClassDetail() {
     variantTitleById,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const syncReadyVariantsFetcher = useFetcher<typeof action>();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
   const busy = navigation.state !== "idle" || revalidator.state !== "idle";
@@ -530,23 +693,37 @@ export default function ClassDetail() {
   );
   const [refreshHasLoaded, setRefreshHasLoaded] = useState(false);
   const [showNoNewClasses, setShowNoNewClasses] = useState(false);
+  const [attemptedReadyVariantGids, setAttemptedReadyVariantGids] = useState<
+    string[]
+  >([]);
   const defaultCapacityNumber = Number(defaultCapacity);
+  const reviewImportRows = useMemo(
+    () => importRows.filter((row) => row.status !== "ready"),
+    [importRows],
+  );
+  const readyImportRows = useMemo(
+    () =>
+      importRows.filter(
+        (row) =>
+          row.status === "ready" &&
+          !attemptedReadyVariantGids.includes(row.variantGid),
+      ),
+    [attemptedReadyVariantGids, importRows],
+  );
   const importPayload = useMemo(
     () =>
-      importRows
-        .filter((row) => row.addToEvent)
-        .map((row) => ({
-          variantGid: row.variantGid,
-          inventoryItemGid: row.inventoryItemGid,
-          sku: row.sku,
-          startsAt: DateTime.fromISO(`${row.date}T${row.time}`, {
-            zone: CLASS_TIMEZONE,
-          }).toISO(),
-          capacity: Number.isFinite(defaultCapacityNumber)
-            ? defaultCapacityNumber
-            : classProduct.defaultCapacity,
-        })),
-    [classProduct.defaultCapacity, defaultCapacityNumber, importRows],
+      buildImportSessionPayload(
+        reviewImportRows.filter((row) => row.addToEvent),
+        Number.isFinite(defaultCapacityNumber)
+          ? defaultCapacityNumber
+          : classProduct.defaultCapacity,
+      ),
+    [classProduct.defaultCapacity, defaultCapacityNumber, reviewImportRows],
+  );
+  const readyImportPayload = useMemo(
+    () =>
+      buildImportSessionPayload(readyImportRows, classProduct.defaultCapacity),
+    [classProduct.defaultCapacity, readyImportRows],
   );
   const activityItems = useMemo(
     () => buildClassActivityItems(classProduct, variantTitleById),
@@ -565,7 +742,7 @@ export default function ClassDetail() {
     defaultStartTime !==
       (classProduct.defaultStartTime ?? DEFAULT_CLASS_START_TIME) ||
     defaultCapacity !== String(classProduct.defaultCapacity) ||
-    importRows.some((row) => row.addToEvent) ||
+    reviewImportRows.some((row) => row.addToEvent) ||
     newSessionRowsDirty;
 
   useEffect(() => {
@@ -597,9 +774,35 @@ export default function ClassDetail() {
   }, [dismissedImportVariantGids, importCandidates]);
 
   useEffect(() => {
+    if (syncReadyVariantsFetcher.state !== "idle") return;
+    if (readyImportPayload.length === 0) return;
+
+    const formData = new FormData();
+    formData.set("intent", "sync-ready-variants");
+    formData.set("sessions", JSON.stringify(readyImportPayload));
+    setAttemptedReadyVariantGids((current) =>
+      Array.from(
+        new Set([
+          ...current,
+          ...readyImportRows.map((row) => row.variantGid),
+        ]),
+      ),
+    );
+    syncReadyVariantsFetcher.submit(formData, { method: "post" });
+  }, [readyImportPayload, readyImportRows, syncReadyVariantsFetcher]);
+
+  useEffect(() => {
+    const data = syncReadyVariantsFetcher.data;
+    if (!(data && "ok" in data)) return;
+    if (data.intent !== "sync-ready-variants") return;
+    revalidator.revalidate();
+  }, [revalidator, syncReadyVariantsFetcher.data]);
+
+  useEffect(() => {
     const rows = buildDefaultNewSessionRows();
     setNewSessionBaselineRows(rows);
     setNewSessionRows(rows);
+    setAttemptedReadyVariantGids([]);
   }, [classProduct.id]);
 
   useEffect(() => {
@@ -616,6 +819,7 @@ export default function ClassDetail() {
     setRefreshHasLoaded(false);
     setShowNoNewClasses(false);
     setDismissedImportVariantGids([]);
+    setAttemptedReadyVariantGids([]);
     revalidator.revalidate();
   }
 
@@ -725,6 +929,12 @@ export default function ClassDetail() {
       {actionData && "error" in actionData && (
         <s-banner tone="critical">{actionData.error}</s-banner>
       )}
+      {syncReadyVariantsFetcher.data &&
+        "error" in syncReadyVariantsFetcher.data && (
+          <s-banner tone="critical">
+            {syncReadyVariantsFetcher.data.error}
+          </s-banner>
+        )}
       {showNoNewClasses && (
         <s-banner heading="No new classes found" tone="warning" />
       )}
@@ -748,7 +958,7 @@ export default function ClassDetail() {
             busy={busy}
           />
           <ShopifyVariantImportCard
-            rows={importRows}
+            rows={reviewImportRows}
             setRows={setImportRows}
             onDismiss={dismissImportVariant}
           />
@@ -1487,6 +1697,7 @@ function ShopifyVariantImportCard({
                 >
                   <s-text>{row.title}</s-text>
                   <s-badge tone="info">New</s-badge>
+                  <ImportStatusBadge status={row.status} />
                 </s-stack>
                 {row.sku ? <s-text color="subdued">{row.sku}</s-text> : null}
               </s-stack>
@@ -1522,7 +1733,11 @@ function ShopifyVariantImportCard({
                   setRows((current) =>
                     current.map((r) =>
                       r.variantGid === row.variantGid
-                        ? { ...r, date: nextDate }
+                        ? {
+                            ...r,
+                            date: nextDate,
+                            status: nextImportStatus(nextDate, r.time),
+                          }
                         : r,
                     ),
                   );
@@ -1532,18 +1747,20 @@ function ShopifyVariantImportCard({
                 label="Start time"
                 icon="clock"
                 value={row.time}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const nextTime = (e.target as HTMLSelectElement).value;
                   setRows((current) =>
                     current.map((r) =>
                       r.variantGid === row.variantGid
                         ? {
                             ...r,
-                            time: (e.target as HTMLSelectElement).value,
+                            time: nextTime,
+                            status: nextImportStatus(r.date, nextTime),
                           }
                         : r,
                     ),
-                  )
-                }
+                  );
+                }}
               >
                 {SESSION_TIME_OPTIONS.map((option) => (
                   <s-option key={option.value} value={option.value}>
@@ -1574,6 +1791,28 @@ function ShopifyVariantImportCard({
       </s-stack>
     </s-section>
   );
+}
+
+function ImportStatusBadge({
+  status,
+}: {
+  status: ShopifyVariantImportStatus;
+}) {
+  if (status === "ready") return <s-badge tone="success">Ready</s-badge>;
+  if (status === "needs-time")
+    return <s-badge tone="caution">Review time</s-badge>;
+  return <s-badge tone="critical">Needs date</s-badge>;
+}
+
+function nextImportStatus(
+  date: string,
+  time: string,
+): ShopifyVariantImportStatus {
+  if (!date) return "needs-date";
+  const startsAt = DateTime.fromISO(`${date}T${time}`, {
+    zone: CLASS_TIMEZONE,
+  });
+  return startsAt.isValid ? "ready" : "needs-time";
 }
 
 function AddSessionsCard({
@@ -1753,6 +1992,24 @@ function buildNewSessionPayload(rows: NewSessionDraftRow[]): NewSessionInput[] {
   }));
 }
 
+function buildImportSessionPayload(
+  rows: ShopifyVariantImportCandidate[],
+  capacity: number,
+): ImportSessionInput[] {
+  return rows.map((row) => {
+    const startsAt = DateTime.fromISO(`${row.date}T${row.time}`, {
+      zone: CLASS_TIMEZONE,
+    });
+    return {
+      variantGid: row.variantGid,
+      inventoryItemGid: row.inventoryItemGid,
+      sku: row.sku,
+      startsAt: startsAt.isValid ? startsAt.toISO() : null,
+      capacity,
+    };
+  });
+}
+
 function buildImportCandidates(
   variants: NonNullable<Awaited<ReturnType<typeof getProduct>>>["variants"],
   sessions: { variantGid: string }[],
@@ -1770,16 +2027,22 @@ function buildImportCandidates(
         ? null
         : parseSessionTitle(variant.title, now);
       const date = skuDateTime?.date ?? titleDateTime?.date;
-      if (!date) return null;
+      const time = skuDateTime?.time ?? titleDateTime?.time;
+      const status: ShopifyVariantImportStatus = !date
+        ? "needs-date"
+        : time
+          ? "ready"
+          : "needs-time";
 
       return {
         variantGid: variant.id,
         inventoryItemGid: variant.inventoryItemId,
         sku: variant.sku,
         title: variant.title,
-        date,
-        time: skuDateTime?.time ?? titleDateTime?.time ?? defaultStartTime,
-        addToEvent: false,
+        date: date ?? "",
+        time: time ?? defaultStartTime,
+        status,
+        addToEvent: status === "ready",
       };
     })
     .filter(
@@ -1787,12 +2050,20 @@ function buildImportCandidates(
         candidate !== null,
     )
     .sort((a, b) => {
+      if (!a.date && !b.date) return a.title.localeCompare(b.title);
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+
       const aStartsAt = DateTime.fromISO(`${a.date}T${a.time}`, {
         zone: CLASS_TIMEZONE,
       });
       const bStartsAt = DateTime.fromISO(`${b.date}T${b.time}`, {
         zone: CLASS_TIMEZONE,
       });
+      if (!aStartsAt.isValid && !bStartsAt.isValid)
+        return a.title.localeCompare(b.title);
+      if (!aStartsAt.isValid) return 1;
+      if (!bStartsAt.isValid) return -1;
       return aStartsAt.toMillis() - bStartsAt.toMillis();
     });
 }
