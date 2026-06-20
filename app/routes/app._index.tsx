@@ -53,6 +53,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
   // (upcoming/past/all) happens client-side, so switching it never refetches.
   const sessions = await db.classSession.findMany({
     where: { shop: session.shop, cancelled: false },
+    orderBy: { createdAt: "asc" },
     include: {
       classProduct: {
         select: {
