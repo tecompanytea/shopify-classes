@@ -62,29 +62,44 @@ type OrderNode = {
 
 const ORDER_PAGE_SIZE = 250;
 const PRODUCT_ID_BATCH_SIZE = 50;
+const SKU_BATCH_SIZE = 50;
 
-// Pulls orders containing products that back class sessions, then filters the
-// line items client-side to the exact variant GIDs. Searching by product ID
-// keeps this narrow while still catching historical orders whose captured line
-// item SKU was empty or later changed.
+// Pulls orders containing products/SKUs that back class sessions, then filters
+// line items client-side to the exact variant GIDs. Product search catches old
+// line items with empty captured SKUs; SKU search catches orders when Shopify's
+// product search misses a class variant.
 export async function listBookingsForVariants(
   admin: AdminApiContext,
   {
     variantGids,
     productGids,
+    skus = [],
     first = ORDER_PAGE_SIZE,
-  }: { variantGids: string[]; productGids: string[]; first?: number },
+  }: {
+    variantGids: string[];
+    productGids: string[];
+    skus?: string[];
+    first?: number;
+  },
 ): Promise<BookingRow[]> {
   if (variantGids.length === 0) return [];
   const variantSet = new Set(variantGids);
   const productIds = uniqueNumericIds(productGids);
-  if (productIds.length === 0) return [];
+  const skuValues = uniqueSearchValues(skus);
+  if (productIds.length === 0 && skuValues.length === 0) return [];
 
   const rows: BookingRow[] = [];
   const seenLineItems = new Set<string>();
+  const searchQueries = [
+    ...chunk(productIds, PRODUCT_ID_BATCH_SIZE).map((batch) =>
+      batch.map((id) => `product_id:${id}`).join(" OR "),
+    ),
+    ...chunk(skuValues, SKU_BATCH_SIZE).map((batch) =>
+      batch.map((sku) => `sku:${quoteSearchValue(sku)}`).join(" OR "),
+    ),
+  ];
 
-  for (const batch of chunk(productIds, PRODUCT_ID_BATCH_SIZE)) {
-    const query = batch.map((id) => `product_id:${id}`).join(" OR ");
+  for (const query of searchQueries) {
     let after: string | null = null;
     let hasNextPage = true;
 
@@ -147,39 +162,13 @@ export async function listBookingsForVariants(
 
       const orders: OrderNode[] = body?.data?.orders?.nodes ?? [];
       for (const order of orders) {
-        const customer = order.customer ?? null;
-        const addr = customer?.defaultAddress;
-        const cityProvince = [addr?.city, addr?.provinceCode]
-          .filter(Boolean)
-          .join(" ");
-        const customerLocation =
-          [cityProvince, addr?.country].filter(Boolean).join(", ") || null;
-        const customerOrdersCount =
-          customer?.numberOfOrders != null ? Number(customer.numberOfOrders) : null;
         for (const li of order.lineItems?.nodes ?? []) {
           if (!li.variant) continue;
           if (!variantSet.has(li.variant.id)) continue;
           const rowKey = `${order.id}:${li.id}`;
           if (seenLineItems.has(rowKey)) continue;
           seenLineItems.add(rowKey);
-          rows.push({
-            orderId: order.id,
-            orderName: order.name,
-            lineItemId: li.id,
-            createdAt: order.createdAt,
-            email: order.email ?? null,
-            customerId: customer?.id ?? null,
-            customerName: customer?.displayName ?? null,
-            customerOrdersCount,
-            customerLocation,
-            financialStatus: order.displayFinancialStatus ?? null,
-            fulfillmentStatus: order.displayFulfillmentStatus ?? null,
-            variantId: li.variant.id,
-            productId: li.variant.product?.id ?? null,
-            quantity: li.quantity,
-            title: li.title,
-            variantTitle: li.variantTitle ?? null,
-          });
+          rows.push(toBookingRow(order, li));
         }
       }
 
@@ -195,6 +184,38 @@ export async function listBookingsForVariants(
   return rows;
 }
 
+function toBookingRow(
+  order: OrderNode,
+  li: NonNullable<NonNullable<OrderNode["lineItems"]>["nodes"]>[number],
+): BookingRow {
+  const customer = order.customer ?? null;
+  const addr = customer?.defaultAddress;
+  const cityProvince = [addr?.city, addr?.provinceCode].filter(Boolean).join(" ");
+  const customerLocation =
+    [cityProvince, addr?.country].filter(Boolean).join(", ") || null;
+  const customerOrdersCount =
+    customer?.numberOfOrders != null ? Number(customer.numberOfOrders) : null;
+
+  return {
+    orderId: order.id,
+    orderName: order.name,
+    lineItemId: li.id,
+    createdAt: order.createdAt,
+    email: order.email ?? null,
+    customerId: customer?.id ?? null,
+    customerName: customer?.displayName ?? null,
+    customerOrdersCount,
+    customerLocation,
+    financialStatus: order.displayFinancialStatus ?? null,
+    fulfillmentStatus: order.displayFulfillmentStatus ?? null,
+    variantId: li.variant!.id,
+    productId: li.variant!.product?.id ?? null,
+    quantity: li.quantity,
+    title: li.title,
+    variantTitle: li.variantTitle ?? null,
+  };
+}
+
 function uniqueNumericIds(gids: string[]): string[] {
   return Array.from(
     new Set(
@@ -203,6 +224,14 @@ function uniqueNumericIds(gids: string[]): string[] {
         .filter((id) => /^\d+$/.test(id)),
     ),
   );
+}
+
+function uniqueSearchValues(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function quoteSearchValue(value: string): string {
+  return /\s/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

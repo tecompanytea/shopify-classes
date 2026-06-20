@@ -69,6 +69,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
   const bookings = await listBookingsForVariants(admin, {
     variantGids: sessions.map((s) => s.variantGid),
     productGids: sessions.map((s) => s.classProduct.productGid),
+    skus: sessions.map((s) => s.sku),
   });
 
   const rows: BookingTableRow[] = [];
