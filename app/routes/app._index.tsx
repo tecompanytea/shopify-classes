@@ -10,6 +10,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { listBookingsForVariants, type BookingRow } from "../.server/shopify/orders";
+import { upsertClassBookingsFromRows } from "../lib/class-bookings.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
 import { formatBookingDate } from "../lib/sku";
 import styles from "../booking-table.module.css";
@@ -80,12 +81,52 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       timezone: s.timezone,
     })),
   });
+  await upsertClassBookingsFromRows(session.shop, bookings, variantToSession);
 
-  const rows: BookingTableRow[] = [];
-  for (const b of bookings) {
-    const s = variantToSession.get(b.variantId);
-    if (!s) continue;
-    rows.push({
+  const bookingSnapshots = await db.classBooking.findMany({
+    where: {
+      shop: session.shop,
+      classSession: { cancelled: false },
+    },
+    include: {
+      classSession: {
+        include: {
+          classProduct: {
+            select: {
+              title: true,
+              productGid: true,
+              location: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
+    orderBy: { orderCreatedAt: "desc" },
+  });
+
+  const rows: BookingTableRow[] = bookingSnapshots.map((booking) => {
+    const s = booking.classSession;
+    const b: BookingRow = {
+      orderId: booking.orderGid,
+      orderName: booking.orderName,
+      lineItemId: booking.lineItemGid,
+      createdAt: booking.orderCreatedAt.toISOString(),
+      email: booking.email,
+      customerId: booking.customerGid,
+      customerName: booking.customerName,
+      customerOrdersCount: booking.customerOrdersCount,
+      customerLocation: booking.customerLocation,
+      financialStatus: booking.financialStatus,
+      fulfillmentStatus: booking.fulfillmentStatus,
+      variantId: booking.variantGid ?? s.variantGid,
+      productId: booking.productGid,
+      sku: booking.sku,
+      quantity: booking.quantity,
+      title: booking.title,
+      variantTitle: booking.variantTitle,
+    };
+
+    return {
       ...b,
       classTitle: s.classProduct.title,
       classProductHref: `shopify://admin/products/${productNumericId(
@@ -93,8 +134,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       )}`,
       locationName: s.classProduct.location?.name ?? null,
       sessionStartsAt: s.startsAt.toISOString(),
-    });
-  }
+    };
+  });
 
   return { rows };
 };

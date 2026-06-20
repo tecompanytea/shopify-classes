@@ -15,6 +15,7 @@ export type BookingRow = {
   fulfillmentStatus: string | null;
   variantId: string;
   productId: string | null;
+  sku: string | null;
   quantity: number;
   title: string;
   variantTitle: string | null;
@@ -233,6 +234,7 @@ function toBookingRow(
     fulfillmentStatus: order.displayFulfillmentStatus ?? null,
     variantId: matchedLineItem.variantId,
     productId: matchedLineItem.productId,
+    sku: li.sku ?? null,
     quantity: li.quantity,
     title: li.title,
     variantTitle: li.variantTitle ?? null,

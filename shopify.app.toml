@@ -24,6 +24,14 @@ api_version = "2026-04"
   topics = [ "products/delete" ]
   uri = "/webhooks/products/delete"
 
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks/orders/create"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/updated" ]
+  uri = "/webhooks/orders/updated"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_customers,read_inventory,read_locations,read_orders,read_products,write_inventory,write_products"

@@ -115,7 +115,42 @@ model ClassSession {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
+  bookings ClassBooking[]
+
   @@unique([shop, variantGid])
   @@index([classProductId, startsAt])
   @@index([shop, startsAt])
+}
+
+// Snapshot of a Shopify order line item that booked a class session.
+// Stored at order webhook time so bookings survive Shopify variant deletion.
+model ClassBooking {
+  id                  String       @id @default(cuid())
+  shop                String
+  classSessionId      String
+  classSession        ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  orderGid            String
+  orderName           String
+  lineItemGid         String
+  orderCreatedAt      DateTime
+  email               String?
+  customerGid         String?
+  customerName        String?
+  customerOrdersCount Int?
+  customerLocation    String?
+  financialStatus     String?
+  fulfillmentStatus   String?
+  variantGid          String?
+  productGid          String?
+  sku                 String?
+  quantity            Int
+  title               String
+  variantTitle        String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@unique([shop, lineItemGid])
+  @@index([shop, orderGid])
+  @@index([shop, orderCreatedAt])
+  @@index([classSessionId])
 }
