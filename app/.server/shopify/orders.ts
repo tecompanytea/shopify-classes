@@ -1,4 +1,5 @@
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
+import { DateTime } from "luxon";
 
 export type BookingRow = {
   orderId: string;
@@ -29,6 +30,15 @@ type OrdersByProductResponse = {
   };
 };
 
+type HistoricalLineItemMatcher = {
+  variantGid: string;
+  productGid: string;
+  productTitle: string | null;
+  classTitle: string;
+  startsAtIso: string;
+  timezone: string;
+};
+
 type OrderNode = {
   id: string;
   name: string;
@@ -49,7 +59,9 @@ type OrderNode = {
   lineItems?: {
     nodes?: {
       id: string;
+      name?: string | null;
       quantity: number;
+      sku?: string | null;
       title: string;
       variantTitle?: string | null;
       variant?: {
@@ -74,11 +86,13 @@ export async function listBookingsForVariants(
     variantGids,
     productGids,
     skus = [],
+    historicalLineItemMatchers = [],
     first = ORDER_PAGE_SIZE,
   }: {
     variantGids: string[];
     productGids: string[];
     skus?: string[];
+    historicalLineItemMatchers?: HistoricalLineItemMatcher[];
     first?: number;
   },
 ): Promise<BookingRow[]> {
@@ -86,6 +100,7 @@ export async function listBookingsForVariants(
   const variantSet = new Set(variantGids);
   const productIds = uniqueNumericIds(productGids);
   const skuValues = uniqueSearchValues(skus);
+  const historicalMatchers = buildHistoricalMatchers(historicalLineItemMatchers);
   if (productIds.length === 0 && skuValues.length === 0) return [];
 
   const rows: BookingRow[] = [];
@@ -134,7 +149,9 @@ export async function listBookingsForVariants(
                 lineItems(first: 250) {
                   nodes {
                     id
+                    name
                     quantity
+                    sku
                     title
                     variantTitle
                     variant {
@@ -163,12 +180,17 @@ export async function listBookingsForVariants(
       const orders: OrderNode[] = body?.data?.orders?.nodes ?? [];
       for (const order of orders) {
         for (const li of order.lineItems?.nodes ?? []) {
-          if (!li.variant) continue;
-          if (!variantSet.has(li.variant.id)) continue;
+          const matchedLineItem = li.variant
+            ? variantSet.has(li.variant.id)
+              ? { variantId: li.variant.id, productId: li.variant.product?.id ?? null }
+              : null
+            : findHistoricalLineItemMatch(li, historicalMatchers);
+          if (!matchedLineItem) continue;
+
           const rowKey = `${order.id}:${li.id}`;
           if (seenLineItems.has(rowKey)) continue;
           seenLineItems.add(rowKey);
-          rows.push(toBookingRow(order, li));
+          rows.push(toBookingRow(order, li, matchedLineItem));
         }
       }
 
@@ -187,6 +209,7 @@ export async function listBookingsForVariants(
 function toBookingRow(
   order: OrderNode,
   li: NonNullable<NonNullable<OrderNode["lineItems"]>["nodes"]>[number],
+  matchedLineItem: { variantId: string; productId: string | null },
 ): BookingRow {
   const customer = order.customer ?? null;
   const addr = customer?.defaultAddress;
@@ -208,12 +231,61 @@ function toBookingRow(
     customerLocation,
     financialStatus: order.displayFinancialStatus ?? null,
     fulfillmentStatus: order.displayFulfillmentStatus ?? null,
-    variantId: li.variant!.id,
-    productId: li.variant!.product?.id ?? null,
+    variantId: matchedLineItem.variantId,
+    productId: matchedLineItem.productId,
     quantity: li.quantity,
     title: li.title,
     variantTitle: li.variantTitle ?? null,
   };
+}
+
+function buildHistoricalMatchers(matchers: HistoricalLineItemMatcher[]) {
+  return matchers.map((matcher) => ({
+    variantId: matcher.variantGid,
+    productId: matcher.productGid,
+    productKeys: [matcher.productTitle, matcher.classTitle]
+      .map((value) => normalizeSearchText(value ?? ""))
+      .filter(Boolean),
+    dateKeys: historicalDateKeys(matcher.startsAtIso, matcher.timezone),
+  }));
+}
+
+function findHistoricalLineItemMatch(
+  li: NonNullable<NonNullable<OrderNode["lineItems"]>["nodes"]>[number],
+  matchers: ReturnType<typeof buildHistoricalMatchers>,
+): { variantId: string; productId: string | null } | null {
+  const productText = normalizeSearchText(li.title);
+  const variantText = normalizeSearchText(
+    [li.variantTitle, li.name].filter(Boolean).join(" "),
+  );
+
+  const match = matchers.find(
+    (matcher) =>
+      matcher.productKeys.some(
+        (key) => key === productText || productText.includes(key),
+      ) && matcher.dateKeys.some((key) => variantText.includes(key)),
+  );
+  return match
+    ? { variantId: match.variantId, productId: match.productId }
+    : null;
+}
+
+function historicalDateKeys(startsAtIso: string, timezone: string): string[] {
+  const startsAt = DateTime.fromISO(startsAtIso, { zone: timezone });
+  if (!startsAt.isValid) return [];
+
+  return [
+    startsAt.toFormat("cccc M/d"),
+    startsAt.toFormat("ccc M/d"),
+    startsAt.toFormat("cccc LLL d"),
+    startsAt.toFormat("ccc LLL d"),
+    startsAt.toFormat("cccc LLL d 'at' h:mm a"),
+    startsAt.toFormat("ccc LLL d 'at' h:mm a"),
+  ].map(normalizeSearchText);
+}
+
+function normalizeSearchText(value: string): string {
+  return value.toLowerCase().replace(/,/g, "").replace(/\s+/g, " ").trim();
 }
 
 function uniqueNumericIds(gids: string[]): string[] {

@@ -56,6 +56,7 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       classProduct: {
         select: {
           title: true,
+          productTitle: true,
           productGid: true,
           location: { select: { name: true } },
         },
@@ -70,6 +71,14 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
     variantGids: sessions.map((s) => s.variantGid),
     productGids: sessions.map((s) => s.classProduct.productGid),
     skus: sessions.map((s) => s.sku),
+    historicalLineItemMatchers: sessions.map((s) => ({
+      variantGid: s.variantGid,
+      productGid: s.classProduct.productGid,
+      productTitle: s.classProduct.productTitle,
+      classTitle: s.classProduct.title,
+      startsAtIso: s.startsAt.toISOString(),
+      timezone: s.timezone,
+    })),
   });
 
   const rows: BookingTableRow[] = [];
