@@ -1468,7 +1468,7 @@ function SessionsCard({
                 <s-stack gap="none">
                   <s-box padding="small">
                     <s-choice-list
-                      label="Show"
+                      label="Sort by"
                       name="sessions-show"
                       values={[scope]}
                       onChange={(event) => {
@@ -1483,9 +1483,10 @@ function SessionsCard({
                       ))}
                     </s-choice-list>
                   </s-box>
+                  <s-divider />
                   <s-box padding="small">
                     <s-choice-list
-                      label="Sort by"
+                      label="Order by"
                       name="sessions-sort-by"
                       values={[sortField]}
                       onChange={(event) => {
@@ -1508,8 +1509,8 @@ function SessionsCard({
             <s-table-header listSlot="inline">
               <s-checkbox
                 accessibilityLabel="Select all sessions"
-                checked={allVisibleSelected}
-                indeterminate={someVisibleSelected}
+                {...(allVisibleSelected ? { checked: true } : {})}
+                {...(someVisibleSelected ? { indeterminate: true } : {})}
                 onChange={(event) =>
                   setVisibleSessionsSelected(event.currentTarget.checked)
                 }
@@ -1545,7 +1546,9 @@ function SessionsCard({
                       <s-checkbox
                         id={checkboxId}
                         accessibilityLabel={`Select ${variantTitle}`}
-                        checked={selectedSessionIds.has(session.id)}
+                        {...(selectedSessionIds.has(session.id)
+                          ? { checked: true }
+                          : {})}
                         onChange={(event) =>
                           setSessionSelected(
                             session.id,
