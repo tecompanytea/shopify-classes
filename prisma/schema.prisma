@@ -91,6 +91,7 @@ model ClassProduct {
   updatedAt         DateTime  @updatedAt
 
   sessions ClassSession[]
+  bookings ClassBooking[]
 
   @@unique([shop, productGid])
   @@index([shop])
@@ -127,8 +128,10 @@ model ClassSession {
 model ClassBooking {
   id                  String       @id @default(cuid())
   shop                String
-  classSessionId      String
-  classSession        ClassSession @relation(fields: [classSessionId], references: [id], onDelete: Cascade)
+  classProductId      String
+  classProduct        ClassProduct @relation(fields: [classProductId], references: [id], onDelete: Cascade)
+  classSessionId      String?
+  classSession        ClassSession? @relation(fields: [classSessionId], references: [id], onDelete: SetNull)
   orderGid            String
   orderName           String
   lineItemGid         String
@@ -152,5 +155,6 @@ model ClassBooking {
   @@unique([shop, lineItemGid])
   @@index([shop, orderGid])
   @@index([shop, orderCreatedAt])
+  @@index([classProductId])
   @@index([classSessionId])
 }

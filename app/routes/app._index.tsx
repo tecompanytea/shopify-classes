@@ -6,10 +6,14 @@ import {
   useRouteError,
 } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { DateTime } from "luxon";
 
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { listBookingsForVariants, type BookingRow } from "../.server/shopify/orders";
+import {
+  listBookingsForClassProducts,
+  type BookingRow,
+} from "../.server/shopify/orders";
 import { upsertClassBookingsFromRows } from "../lib/class-bookings.server";
 import { CLASS_TIMEZONE } from "../lib/class-config";
 import { formatBookingDate } from "../lib/sku";
@@ -39,7 +43,9 @@ type BookingTableRow = BookingRow & {
   classTitle: string;
   classProductHref: string;
   locationName: string | null;
-  sessionStartsAt: string;
+  sessionStartsAt: string | null;
+  sortStartsAt: string | null;
+  classDateLabel: string;
 };
 
 type LoaderResult = {
@@ -49,30 +55,35 @@ type LoaderResult = {
 export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderResult> => {
   const { session, admin } = await authenticate.admin(request);
 
-  // Fetch every (non-cancelled) session + its bookings once. Scope filtering
+  // Fetch every class product + its sessions once. Scope filtering
   // (upcoming/past/all) happens client-side, so switching it never refetches.
-  const sessions = await db.classSession.findMany({
-    where: { shop: session.shop, cancelled: false },
+  const classProducts = await db.classProduct.findMany({
+    where: { shop: session.shop },
     orderBy: { createdAt: "asc" },
     include: {
-      classProduct: {
-        select: {
-          title: true,
-          productTitle: true,
-          productGid: true,
-          location: { select: { name: true } },
-        },
+      location: { select: { name: true } },
+      sessions: {
+        where: { cancelled: false },
+        orderBy: { createdAt: "asc" },
       },
     },
   });
 
-  if (sessions.length === 0) return { rows: [] };
+  if (classProducts.length === 0) return { rows: [] };
 
+  const sessions = classProducts.flatMap((classProduct) =>
+    classProduct.sessions.map((classSession) => ({
+      ...classSession,
+      classProduct,
+    })),
+  );
   const variantToSession = new Map(sessions.map((s) => [s.variantGid, s]));
-  const bookings = await listBookingsForVariants(admin, {
+  const productToClassProduct = new Map(
+    classProducts.map((classProduct) => [classProduct.productGid, classProduct]),
+  );
+  const bookings = await listBookingsForClassProducts(admin, {
     variantGids: sessions.map((s) => s.variantGid),
-    productGids: sessions.map((s) => s.classProduct.productGid),
-    skus: sessions.map((s) => s.sku),
+    productGids: classProducts.map((classProduct) => classProduct.productGid),
     historicalLineItemMatchers: sessions.map((s) => ({
       variantGid: s.variantGid,
       productGid: s.classProduct.productGid,
@@ -82,23 +93,29 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       timezone: s.timezone,
     })),
   });
-  await upsertClassBookingsFromRows(session.shop, bookings, variantToSession);
+  await upsertClassBookingsFromRows(session.shop, bookings, {
+    variantToSession,
+    productToClassProduct,
+  });
 
   const bookingSnapshots = await db.classBooking.findMany({
     where: {
       shop: session.shop,
-      classSession: { cancelled: false },
+      OR: [{ classSessionId: null }, { classSession: { cancelled: false } }],
     },
     include: {
+      classProduct: {
+        select: {
+          title: true,
+          productGid: true,
+          timezone: true,
+          location: { select: { name: true } },
+        },
+      },
       classSession: {
-        include: {
-          classProduct: {
-            select: {
-              title: true,
-              productGid: true,
-              location: { select: { name: true } },
-            },
-          },
+        select: {
+          variantGid: true,
+          startsAt: true,
         },
       },
     },
@@ -107,6 +124,12 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
 
   const rows: BookingTableRow[] = bookingSnapshots.map((booking) => {
     const s = booking.classSession;
+    const sessionStartsAt = s?.startsAt.toISOString() ?? null;
+    const inferredStartsAt = inferBookingStartsAt(
+      booking.variantTitle,
+      booking.orderCreatedAt.toISOString(),
+      booking.classProduct.timezone,
+    );
     const b: BookingRow = {
       orderId: booking.orderGid,
       orderName: booking.orderName,
@@ -119,8 +142,8 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
       customerLocation: booking.customerLocation,
       financialStatus: booking.financialStatus,
       fulfillmentStatus: booking.fulfillmentStatus,
-      variantId: booking.variantGid ?? s.variantGid,
-      productId: booking.productGid,
+      variantId: booking.variantGid ?? s?.variantGid ?? null,
+      productId: booking.productGid ?? booking.classProduct.productGid,
       sku: booking.sku,
       quantity: booking.quantity,
       title: booking.title,
@@ -129,12 +152,16 @@ export const loader = async ({ request }: LoaderFunctionArgs): Promise<LoaderRes
 
     return {
       ...b,
-      classTitle: s.classProduct.title,
+      classTitle: booking.classProduct.title,
       classProductHref: `shopify://admin/products/${productNumericId(
-        s.classProduct.productGid,
+        booking.classProduct.productGid,
       )}`,
-      locationName: s.classProduct.location?.name ?? null,
-      sessionStartsAt: s.startsAt.toISOString(),
+      locationName: booking.classProduct.location?.name ?? null,
+      sessionStartsAt,
+      sortStartsAt: sessionStartsAt ?? inferredStartsAt,
+      classDateLabel: sessionStartsAt
+        ? formatBookingDate(sessionStartsAt, CLASS_TIMEZONE)
+        : booking.variantTitle ?? "—",
     };
   });
 
@@ -174,7 +201,7 @@ export default function Bookings() {
   const q = query.trim().toLowerCase();
   const visibleRows = rows
     .filter((r) => {
-      const t = new Date(r.sessionStartsAt).getTime();
+      const t = bookingDateTime(r);
       if (scope === "upcoming") return t >= now;
       if (scope === "past") return t < now;
       return true;
@@ -189,11 +216,7 @@ export default function Bookings() {
     .sort((a, b) => {
       const dir = sortDir === "asc" ? 1 : -1;
       if (sortField === "classDate") {
-        return (
-          dir *
-          (new Date(a.sessionStartsAt).getTime() -
-            new Date(b.sessionStartsAt).getTime())
-        );
+        return dir * (bookingDateTime(a) - bookingDateTime(b));
       }
       const pick = (r: BookingTableRow) =>
         (sortField === "class"
@@ -511,7 +534,7 @@ export default function Bookings() {
                       </span>
                     </s-table-cell>
                     <s-table-cell>
-                      {formatBookingDate(r.sessionStartsAt, CLASS_TIMEZONE)}
+                      {r.classDateLabel}
                     </s-table-cell>
                     <s-table-cell>
                       <button
@@ -686,6 +709,48 @@ function emptyMessage(scope: Scope): string {
 
 function bookingRowId(row: BookingTableRow): string {
   return `${row.orderId}:${row.lineItemId}`;
+}
+
+function bookingDateTime(row: BookingTableRow): number {
+  return new Date(row.sortStartsAt ?? row.createdAt).getTime();
+}
+
+const VARIANT_DATE_FORMATS = [
+  { format: "cccc M/d", hasTime: false },
+  { format: "ccc M/d", hasTime: false },
+  { format: "cccc LLL d", hasTime: false },
+  { format: "ccc LLL d", hasTime: false },
+  { format: "cccc LLL d 'at' h:mm a", hasTime: true },
+  { format: "ccc LLL d 'at' h:mm a", hasTime: true },
+] as const;
+
+function inferBookingStartsAt(
+  variantTitle: string | null,
+  orderCreatedAt: string,
+  timezone: string,
+): string | null {
+  const value = variantTitle?.replace(/,/g, "").replace(/\s+/g, " ").trim();
+  if (!value) return null;
+
+  const orderDate = DateTime.fromISO(orderCreatedAt, { zone: timezone });
+  if (!orderDate.isValid) return null;
+
+  for (const { format, hasTime } of VARIANT_DATE_FORMATS) {
+    let parsed = DateTime.fromFormat(`${value} ${orderDate.year}`, `${format} yyyy`, {
+      zone: timezone,
+      locale: "en-US",
+    });
+    if (!parsed.isValid) continue;
+
+    if (!hasTime) parsed = parsed.startOf("day");
+    if (parsed < orderDate.startOf("day").minus({ days: 30 })) {
+      parsed = parsed.plus({ years: 1 });
+    }
+
+    return parsed.toISO();
+  }
+
+  return null;
 }
 
 // Shopify display status enums (e.g. PARTIALLY_REFUNDED) → "Partially refunded".

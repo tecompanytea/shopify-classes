@@ -13,8 +13,8 @@ export type BookingRow = {
   customerLocation: string | null;
   financialStatus: string | null;
   fulfillmentStatus: string | null;
-  variantId: string;
-  productId: string | null;
+  variantId: string | null;
+  productId: string;
   sku: string | null;
   quantity: number;
   title: string;
@@ -65,6 +65,7 @@ type OrderNode = {
       sku?: string | null;
       title: string;
       variantTitle?: string | null;
+      product?: { id?: string | null } | null;
       variant?: {
         id: string;
         product?: { id?: string | null } | null;
@@ -75,45 +76,34 @@ type OrderNode = {
 
 const ORDER_PAGE_SIZE = 250;
 const PRODUCT_ID_BATCH_SIZE = 50;
-const SKU_BATCH_SIZE = 50;
 
-// Pulls orders containing products/SKUs that back class sessions, then filters
-// line items client-side to the exact variant GIDs. Product search catches old
-// line items with empty captured SKUs; SKU search catches orders when Shopify's
-// product search misses a class variant.
-export async function listBookingsForVariants(
+// Product ownership is the source of truth for class bookings. Variant/date
+// matching only attaches a product-level booking to a specific session.
+export async function listBookingsForClassProducts(
   admin: AdminApiContext,
   {
     variantGids,
     productGids,
-    skus = [],
     historicalLineItemMatchers = [],
     first = ORDER_PAGE_SIZE,
   }: {
     variantGids: string[];
     productGids: string[];
-    skus?: string[];
     historicalLineItemMatchers?: HistoricalLineItemMatcher[];
     first?: number;
   },
 ): Promise<BookingRow[]> {
-  if (variantGids.length === 0) return [];
   const variantSet = new Set(variantGids);
+  const productSet = new Set(productGids);
   const productIds = uniqueNumericIds(productGids);
-  const skuValues = uniqueSearchValues(skus);
   const historicalMatchers = buildHistoricalMatchers(historicalLineItemMatchers);
-  if (productIds.length === 0 && skuValues.length === 0) return [];
+  if (productIds.length === 0) return [];
 
   const rows: BookingRow[] = [];
   const seenLineItems = new Set<string>();
-  const searchQueries = [
-    ...chunk(productIds, PRODUCT_ID_BATCH_SIZE).map((batch) =>
-      batch.map((id) => `product_id:${id}`).join(" OR "),
-    ),
-    ...chunk(skuValues, SKU_BATCH_SIZE).map((batch) =>
-      batch.map((sku) => `sku:${quoteSearchValue(sku)}`).join(" OR "),
-    ),
-  ];
+  const searchQueries = chunk(productIds, PRODUCT_ID_BATCH_SIZE).map((batch) =>
+    batch.map((id) => `product_id:${id}`).join(" OR "),
+  );
 
   for (const query of searchQueries) {
     let after: string | null = null;
@@ -155,6 +145,7 @@ export async function listBookingsForVariants(
                     sku
                     title
                     variantTitle
+                    product { id }
                     variant {
                       id
                       product { id }
@@ -181,17 +172,23 @@ export async function listBookingsForVariants(
       const orders: OrderNode[] = body?.data?.orders?.nodes ?? [];
       for (const order of orders) {
         for (const li of order.lineItems?.nodes ?? []) {
-          const matchedLineItem = li.variant
-            ? variantSet.has(li.variant.id)
-              ? { variantId: li.variant.id, productId: li.variant.product?.id ?? null }
-              : null
-            : findHistoricalLineItemMatch(li, historicalMatchers);
-          if (!matchedLineItem) continue;
+          const productId = li.product?.id ?? li.variant?.product?.id ?? null;
+          if (!productId || !productSet.has(productId)) continue;
+
+          const sessionMatch =
+            li.variant && variantSet.has(li.variant.id)
+              ? { variantId: li.variant.id }
+              : findHistoricalLineItemMatch(li, productId, historicalMatchers);
 
           const rowKey = `${order.id}:${li.id}`;
           if (seenLineItems.has(rowKey)) continue;
           seenLineItems.add(rowKey);
-          rows.push(toBookingRow(order, li, matchedLineItem));
+          rows.push(
+            toBookingRow(order, li, {
+              productId,
+              variantId: sessionMatch?.variantId ?? li.variant?.id ?? null,
+            }),
+          );
         }
       }
 
@@ -210,7 +207,7 @@ export async function listBookingsForVariants(
 function toBookingRow(
   order: OrderNode,
   li: NonNullable<NonNullable<OrderNode["lineItems"]>["nodes"]>[number],
-  matchedLineItem: { variantId: string; productId: string | null },
+  matchedLineItem: { variantId: string | null; productId: string },
 ): BookingRow {
   const customer = order.customer ?? null;
   const addr = customer?.defaultAddress;
@@ -254,8 +251,9 @@ function buildHistoricalMatchers(matchers: HistoricalLineItemMatcher[]) {
 
 function findHistoricalLineItemMatch(
   li: NonNullable<NonNullable<OrderNode["lineItems"]>["nodes"]>[number],
+  productId: string,
   matchers: ReturnType<typeof buildHistoricalMatchers>,
-): { variantId: string; productId: string | null } | null {
+): { variantId: string } | null {
   const productText = normalizeSearchText(li.title);
   const variantText = normalizeSearchText(
     [li.variantTitle, li.name].filter(Boolean).join(" "),
@@ -263,13 +261,13 @@ function findHistoricalLineItemMatch(
 
   const match = matchers.find(
     (matcher) =>
-      matcher.productKeys.some(
-        (key) => key === productText || productText.includes(key),
-      ) && matcher.dateKeys.some((key) => variantText.includes(key)),
+      (matcher.productId === productId ||
+        matcher.productKeys.some(
+          (key) => key === productText || productText.includes(key),
+        )) &&
+      matcher.dateKeys.some((key) => variantText.includes(key)),
   );
-  return match
-    ? { variantId: match.variantId, productId: match.productId }
-    : null;
+  return match ? { variantId: match.variantId } : null;
 }
 
 function historicalDateKeys(startsAtIso: string, timezone: string): string[] {
@@ -298,14 +296,6 @@ function uniqueNumericIds(gids: string[]): string[] {
         .filter((id) => /^\d+$/.test(id)),
     ),
   );
-}
-
-function uniqueSearchValues(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-}
-
-function quoteSearchValue(value: string): string {
-  return /\s/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

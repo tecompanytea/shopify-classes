@@ -1,9 +1,10 @@
-import type { ClassSession } from "@prisma/client";
+import type { ClassProduct, ClassSession } from "@prisma/client";
 
 import db from "../db.server";
 import type { BookingRow } from "../.server/shopify/orders";
 
 type SessionForBooking = ClassSession;
+type ProductForBooking = Pick<ClassProduct, "id" | "productGid">;
 
 type ShopifyOrderWebhookPayload = {
   id?: number;
@@ -44,15 +45,25 @@ type ShopifyOrderWebhookLineItem = {
 export async function upsertClassBookingsFromRows(
   shop: string,
   rows: BookingRow[],
-  variantToSession: Map<string, SessionForBooking>,
+  {
+    variantToSession,
+    productToClassProduct,
+  }: {
+    variantToSession: Map<string, SessionForBooking>;
+    productToClassProduct: Map<string, ProductForBooking>;
+  },
 ) {
   for (const row of rows) {
-    const classSession = variantToSession.get(row.variantId);
-    if (!classSession) continue;
+    const classProduct = productToClassProduct.get(row.productId);
+    if (!classProduct) continue;
+    const classSession = row.variantId
+      ? variantToSession.get(row.variantId)
+      : undefined;
 
     await upsertClassBooking({
       shop,
-      classSessionId: classSession.id,
+      classProductId: classProduct.id,
+      classSessionId: classSession?.id ?? null,
       orderGid: row.orderId,
       orderName: row.orderName,
       lineItemGid: row.lineItemId,
@@ -88,22 +99,26 @@ export async function upsertClassBookingsFromOrderWebhook(
   const variantGids = lineItems
     .map((lineItem) => numericGid("ProductVariant", lineItem.variant_id))
     .filter(isPresent);
-  const skus = lineItems
-    .map((lineItem) => lineItem.sku?.trim())
+  const productGids = lineItems
+    .map((lineItem) => numericGid("Product", lineItem.product_id))
     .filter(isPresent);
-  if (variantGids.length === 0 && skus.length === 0) return;
+  if (productGids.length === 0) return;
+
+  const classProducts = await db.classProduct.findMany({
+    where: { shop, productGid: { in: productGids } },
+  });
+  if (classProducts.length === 0) return;
 
   const sessions = await db.classSession.findMany({
     where: {
       shop,
-      OR: [
-        ...(variantGids.length > 0 ? [{ variantGid: { in: variantGids } }] : []),
-        ...(skus.length > 0 ? [{ sku: { in: skus } }] : []),
-      ],
+      variantGid: { in: variantGids },
     },
   });
+  const byProduct = new Map(
+    classProducts.map((classProduct) => [classProduct.productGid, classProduct]),
+  );
   const byVariant = new Map(sessions.map((session) => [session.variantGid, session]));
-  const bySku = new Map(sessions.map((session) => [session.sku, session]));
 
   const customer = order.customer ?? null;
   const customerName = [customer?.first_name, customer?.last_name]
@@ -113,11 +128,12 @@ export async function upsertClassBookingsFromOrderWebhook(
 
   for (const lineItem of lineItems) {
     const variantGid = numericGid("ProductVariant", lineItem.variant_id);
+    const productGid = numericGid("Product", lineItem.product_id);
+    const classProduct = productGid ? byProduct.get(productGid) : undefined;
+    if (!classProduct) continue;
+
     const sku = lineItem.sku?.trim() || null;
-    const classSession =
-      (variantGid ? byVariant.get(variantGid) : undefined) ??
-      (sku ? bySku.get(sku) : undefined);
-    if (!classSession) continue;
+    const classSession = variantGid ? byVariant.get(variantGid) : undefined;
 
     const lineItemGid =
       lineItem.admin_graphql_api_id ?? numericGid("LineItem", lineItem.id);
@@ -125,7 +141,8 @@ export async function upsertClassBookingsFromOrderWebhook(
 
     await upsertClassBooking({
       shop,
-      classSessionId: classSession.id,
+      classProductId: classProduct.id,
+      classSessionId: classSession?.id ?? null,
       orderGid,
       orderName: order.name,
       lineItemGid,
@@ -139,7 +156,7 @@ export async function upsertClassBookingsFromOrderWebhook(
       financialStatus: normalizeStatus(order.financial_status),
       fulfillmentStatus: normalizeFulfillmentStatus(order.fulfillment_status),
       variantGid,
-      productGid: numericGid("Product", lineItem.product_id),
+      productGid,
       sku,
       quantity: lineItem.quantity ?? 0,
       title: lineItem.title ?? lineItem.name ?? "",
@@ -150,7 +167,8 @@ export async function upsertClassBookingsFromOrderWebhook(
 
 async function upsertClassBooking(input: {
   shop: string;
-  classSessionId: string;
+  classProductId: string;
+  classSessionId: string | null;
   orderGid: string;
   orderName: string;
   lineItemGid: string;
