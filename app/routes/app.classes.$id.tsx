@@ -84,11 +84,21 @@ type NewSessionDraftRow = {
   time: string;
 };
 
+type SessionScope = "upcoming" | "past" | "all";
 type SessionSortField = "date" | "status" | "seats";
 type ClassActivityItem = {
   message: string;
   timestamp: DateTime;
 };
+
+const SESSION_SCOPE_OPTIONS: Array<{
+  scope: SessionScope;
+  label: string;
+}> = [
+  { scope: "upcoming", label: "Upcoming" },
+  { scope: "past", label: "Past" },
+  { scope: "all", label: "All" },
+];
 
 const SESSION_SORT_OPTIONS: Array<{
   field: SessionSortField;
@@ -1291,6 +1301,7 @@ function SessionsCard({
   busy: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<SessionScope>("upcoming");
   const [sortField, setSortField] = useState<SessionSortField>("date");
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(
     () => new Set(),
@@ -1342,8 +1353,13 @@ function SessionsCard({
     }
   });
   const normalizedQuery = query.trim().toLowerCase();
+  const scopedRows = sortedRows.filter(({ status }) => {
+    if (scope === "upcoming") return status === "Upcoming";
+    if (scope === "past") return status === "Past";
+    return true;
+  });
   const visibleRows = normalizedQuery
-    ? sortedRows.filter(
+    ? scopedRows.filter(
         ({ session, status, variantTitle, displayDate, displayTime }) =>
           [
             variantTitle,
@@ -1357,7 +1373,7 @@ function SessionsCard({
           .toLowerCase()
           .includes(normalizedQuery),
       )
-    : sortedRows;
+    : scopedRows;
   const selectedVisibleCount = visibleRows.filter(({ session }) =>
     selectedSessionIds.has(session.id),
   ).length;
@@ -1450,6 +1466,23 @@ function SessionsCard({
               />
               <s-popover id="sessions-sort-actions">
                 <s-stack gap="none">
+                  <s-box padding="small">
+                    <s-choice-list
+                      label="Show"
+                      name="sessions-show"
+                      values={[scope]}
+                      onChange={(event) => {
+                        const next = event.currentTarget.values[0];
+                        if (next) setScope(next as SessionScope);
+                      }}
+                    >
+                      {SESSION_SCOPE_OPTIONS.map((option) => (
+                        <s-choice key={option.scope} value={option.scope}>
+                          {option.label}
+                        </s-choice>
+                      ))}
+                    </s-choice-list>
+                  </s-box>
                   <s-box padding="small">
                     <s-choice-list
                       label="Sort by"
