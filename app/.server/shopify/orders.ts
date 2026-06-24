@@ -62,6 +62,7 @@ type OrderNode = {
       id: string;
       name?: string | null;
       quantity: number;
+      currentQuantity?: number;
       sku?: string | null;
       title: string;
       variantTitle?: string | null;
@@ -142,6 +143,7 @@ export async function listBookingsForClassProducts(
                     id
                     name
                     quantity
+                    currentQuantity
                     sku
                     title
                     variantTitle
@@ -217,6 +219,14 @@ function toBookingRow(
   const customerOrdersCount =
     customer?.numberOfOrders != null ? Number(customer.numberOfOrders) : null;
 
+  // Match the Shopify Orders page: when a line item has no fulfillable units
+  // left (fully refunded/removed → currentQuantity 0), Shopify shows
+  // "Not required", even though displayFulfillmentStatus stays UNFULFILLED.
+  const fulfillmentStatus =
+    li.currentQuantity === 0
+      ? "NOT_REQUIRED"
+      : (order.displayFulfillmentStatus ?? null);
+
   return {
     orderId: order.id,
     orderName: order.name,
@@ -228,7 +238,7 @@ function toBookingRow(
     customerOrdersCount,
     customerLocation,
     financialStatus: order.displayFinancialStatus ?? null,
-    fulfillmentStatus: order.displayFulfillmentStatus ?? null,
+    fulfillmentStatus,
     variantId: matchedLineItem.variantId,
     productId: matchedLineItem.productId,
     sku: li.sku ?? null,

@@ -779,6 +779,9 @@ function fulfillmentTone(status: string): BadgeTone | undefined {
       return "caution";
     case "RESTOCKED":
       return "info";
+    case "NOT_REQUIRED":
+      // Nothing left to fulfill (e.g. fully refunded) — grey, no action needed.
+      return "neutral";
     default:
       return "neutral";
   }
