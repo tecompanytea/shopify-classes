@@ -1641,7 +1641,10 @@ function EditSessionModal({
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time" value={time} />
       <s-modal id={id} heading={variantTitle} size="small-100">
-        <s-grid gridTemplateColumns="1fr 1fr" gap="base">
+        {/* minmax(0, 1fr), not 1fr: a bare 1fr floors at the date field's
+            intrinsic min width, which squeezes the time select in the narrow
+            modal. minmax(0, 1fr) keeps the columns truly equal. */}
+        <s-grid gridTemplateColumns="repeat(2, minmax(0, 1fr))" gap="base">
           <s-date-field
             label="Date"
             placeholder="YYYY-MM-DD"
