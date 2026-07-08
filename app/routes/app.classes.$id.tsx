@@ -136,6 +136,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const variantTitleById = Object.fromEntries(
     (product?.variants ?? []).map((variant) => [variant.id, variant.title]),
   );
+  const variantSeatsById: Record<string, number> = {};
+  for (const variant of product?.variants ?? []) {
+    if (variant.inventoryQuantity !== null) {
+      variantSeatsById[variant.id] = variant.inventoryQuantity;
+    }
+  }
   const importCandidates = product
     ? buildImportCandidates(
         product.variants,
@@ -150,6 +156,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     shopifyLocations,
     importCandidates,
     variantTitleById,
+    variantSeatsById,
   };
 };
 
@@ -231,7 +238,9 @@ export const action = async ({
         }
 
         const capacity = Number(
-          input.capacity ?? classProduct.defaultCapacity,
+          variant.inventoryQuantity ??
+            input.capacity ??
+            classProduct.defaultCapacity,
         );
         return {
           classProductId: classProduct.id,
@@ -399,7 +408,9 @@ export const action = async ({
             return null;
           }
 
-          const capacity = Number(input.capacity ?? defaultCapacity);
+          const capacity = Number(
+            variant.inventoryQuantity ?? input.capacity ?? defaultCapacity,
+          );
           return {
             classProductId: classProduct.id,
             shop: session.shop,
@@ -669,6 +680,7 @@ export default function ClassDetail() {
     shopifyLocations,
     importCandidates,
     variantTitleById,
+    variantSeatsById,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const syncReadyVariantsFetcher = useFetcher<typeof action>();
@@ -800,13 +812,6 @@ export default function ClassDetail() {
     );
     syncReadyVariantsFetcher.submit(formData, { method: "post" });
   }, [readyImportPayload, readyImportRows, syncReadyVariantsFetcher]);
-
-  useEffect(() => {
-    const data = syncReadyVariantsFetcher.data;
-    if (!(data && "ok" in data)) return;
-    if (data.intent !== "sync-ready-variants") return;
-    revalidator.revalidate();
-  }, [revalidator, syncReadyVariantsFetcher.data]);
 
   useEffect(() => {
     const rows = buildDefaultNewSessionRows();
@@ -965,6 +970,7 @@ export default function ClassDetail() {
           <SessionsCard
             classProduct={classProduct}
             variantTitleById={variantTitleById}
+            variantSeatsById={variantSeatsById}
             busy={busy}
           />
           <ShopifyVariantImportCard
@@ -1294,10 +1300,12 @@ function DefaultsCard({
 function SessionsCard({
   classProduct,
   variantTitleById,
+  variantSeatsById,
   busy,
 }: {
   classProduct: ClassProductWith;
   variantTitleById: Record<string, string>;
+  variantSeatsById: Record<string, number>;
   busy: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -1331,6 +1339,7 @@ function SessionsCard({
       variantTitle,
       status,
       upcoming,
+      seats: variantSeatsById[session.variantGid] ?? session.capacity,
       startsAtMillis: startsAt.toMillis(),
       editDate: startsAt.toFormat("yyyy-LL-dd"),
       editTime: startsAt.toFormat("HH:mm"),
@@ -1341,7 +1350,7 @@ function SessionsCard({
   const sortedRows = [...rows].sort((a, b) => {
     switch (sortField) {
       case "seats":
-        return a.session.capacity - b.session.capacity;
+        return a.seats - b.seats;
       case "status":
         return a.status.localeCompare(b.status, undefined, {
           numeric: true,
@@ -1360,11 +1369,11 @@ function SessionsCard({
   });
   const visibleRows = normalizedQuery
     ? scopedRows.filter(
-        ({ session, status, variantTitle, displayDate, displayTime }) =>
+        ({ session, status, variantTitle, seats, displayDate, displayTime }) =>
           [
             variantTitle,
             status,
-            String(session.capacity),
+            String(seats),
             session.sku,
             displayDate,
             displayTime,
@@ -1532,6 +1541,7 @@ function SessionsCard({
                 variantTitle,
                 status,
                 upcoming,
+                seats,
                 editDate,
                 editTime,
                 displayDate,
@@ -1574,7 +1584,7 @@ function SessionsCard({
                         <s-badge>Past</s-badge>
                       )}
                     </s-table-cell>
-                    <s-table-cell>{session.capacity}</s-table-cell>
+                    <s-table-cell>{seats}</s-table-cell>
                     <s-table-cell>{displayDate}</s-table-cell>
                     <s-table-cell>{displayTime}</s-table-cell>
                     <s-table-cell>
@@ -1714,7 +1724,7 @@ function ShopifyVariantImportCard({
             <s-badge>{rows.length}</s-badge>
           </s-stack>
           <s-stack direction="inline" gap="small-200" alignItems="center">
-            <s-text color="subdued">Seats use event default</s-text>
+            <s-text color="subdued">Seats match Shopify inventory</s-text>
           </s-stack>
         </s-stack>
         {rows.map((row, idx) => (
