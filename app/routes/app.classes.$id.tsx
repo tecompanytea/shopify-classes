@@ -1641,11 +1641,7 @@ function EditSessionModal({
       <input type="hidden" name="date" value={date} />
       <input type="hidden" name="time" value={time} />
       <s-modal id={id} heading={variantTitle} size="small-100">
-        <s-grid
-          gridTemplateColumns="repeat(2, minmax(0, 1fr))"
-          gap="base"
-          justifyItems="stretch"
-        >
+        <s-grid gridTemplateColumns="1fr 1fr" gap="base">
           <s-date-field
             label="Date"
             placeholder="YYYY-MM-DD"
