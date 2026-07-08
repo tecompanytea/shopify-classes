@@ -1635,7 +1635,7 @@ function EditSessionModal({
   const todayIso = DateTime.now().setZone(CLASS_TIMEZONE).toFormat("yyyy-LL-dd");
 
   return (
-    <Form method="post" className={styles.editSessionForm}>
+    <Form method="post">
       <input type="hidden" name="intent" value="edit-session" />
       <input type="hidden" name="sessionId" value={sessionId} />
       <input type="hidden" name="date" value={date} />

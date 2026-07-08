@@ -1,11 +1,3 @@
-.editSessionForm s-text-field,
-.editSessionForm s-select,
-s-modal[id$="-edit"] s-text-field,
-s-modal[id$="-edit"] s-select {
-  display: block;
-  inline-size: 100%;
-}
-
 /* Class detail layout: summary as a right rail on desktop, timeline always last.
    Mirrors Shopify's order page (custom grid) so visual order is decoupled from
    DOM order — on mobile the grid collapses to: main → summary → timeline. */
